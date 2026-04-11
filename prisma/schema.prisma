@@ -1,0 +1,294 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  teacher
+  student
+  center
+}
+
+model User {
+  id       String  @id @default(uuid())
+  name     String
+  imageUrl String?
+  email    String  @unique
+  password String
+  role     Role
+  phone    String?
+  address  String?
+
+  followerCounts  Int @default(0)
+  followingCounts Int @default(0)
+  postCounts      Int @default(0)
+
+  // Relations
+  teacher Teacher?
+  student Student?
+  center  Center?
+
+  refresh_token   RefreshToken?
+  profile_center  ProfileCenter?
+  profile_teacher ProfileTeacher?
+
+  posts    Post[]
+  comments Comment[]
+
+  likes     Like[]
+  followers Follower[] @relation("followers")
+  following Follower[] @relation("following")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Teacher {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  classRoom     String?
+  studyMaterial String?
+  studySystem   String[]
+
+  lessons     Lesson[]
+  teacherDays TeacherDay[]
+  exams       Exam[]
+  homeworks   Homework[]
+  notes       Note[]
+}
+
+model Student {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  educationalStage String?
+  classRoom        String?
+
+  bookingWeekly BookedWeekly[]
+  bookingLesson BookedLesson[]
+}
+
+model ProfileTeacher {
+  id String @id @default(uuid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+
+  bio                      String?
+  star                     Float    @default(0)
+  whatsApp                 String?
+  sharePrice               Int      @default(0)
+  centersWhereHeStudie     String[]
+  experienceYear           Int      @default(0)
+  educationalQualification String?
+}
+
+model Center {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  governorate      String?
+  educationalStage String[]
+  studySystem      String[]
+
+  schedules WeeklySchedule[]
+}
+
+model ProfileCenter {
+  id String @id @default(uuid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+
+  bio            String?
+  whatsApp       String?
+  contactUsPhone String[]
+  contactUsEmail String[]
+  studyMaterial  String[]
+}
+
+model RefreshToken {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token String
+}
+
+model Lesson {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  title         String
+  studyMaterial String
+  classRoom     String
+  description   String
+  videoUrl      String?
+
+  bookingLesson BookedLesson[]
+
+  createdAt DateTime @default(now())
+}
+
+model BookedLesson {
+  id String @id @default(uuid())
+
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+
+  lesson   Lesson? @relation(fields: [lessonId], references: [id])
+  lessonId String
+
+  @@unique([studentId, lessonId])
+}
+
+model Exam {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  classRoom     String
+  title         String
+  studyMaterial String
+  description   String
+  imageUrl      String?
+
+  createdAt DateTime @default(now())
+}
+
+model Homework {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  title         String
+  studyMaterial String
+  classRoom     String
+  description   String
+  imageUrl      String?
+
+  createdAt DateTime @default(now())
+}
+
+model Note {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  title         String
+  description   String
+  imageUrl      String?
+  studyMaterial String
+  classRoom     String
+
+  createdAt DateTime @default(now())
+}
+
+model WeeklySchedule {
+  id       String @id @default(uuid())
+  centerId String
+  center   Center @relation(fields: [centerId], references: [id], onDelete: Cascade)
+
+  classRoom String
+
+  teacherDays TeacherDay[]
+
+  @@unique([centerId, classRoom])
+}
+
+model TeacherDay {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  weekly_scheduleId String
+  weekly_schedule   WeeklySchedule @relation(fields: [weekly_scheduleId], references: [id])
+
+  time          String
+  day           String
+  studyMaterial String
+
+  BookedWeekly BookedWeekly[]
+
+  @@unique([teacherId, weekly_scheduleId, day, time])
+}
+
+model BookedWeekly {
+  id           String @id @default(uuid())
+  studentId    String
+  teacherDayId String
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  teacherDay TeacherDay @relation(fields: [teacherDayId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, teacherDayId])
+}
+
+model Post {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role     Role
+  title    String
+  content  String
+  imageUrl String?
+
+  likeCounts    Int @default(0)
+  commentCounts Int @default(0)
+
+  comments Comment[]
+  likes    Like[]
+
+  createdAt DateTime @default(now())
+}
+
+model Like {
+  id     String @id @default(uuid())
+  userId String
+  postId String
+
+  user User @relation(fields: [userId], references: [id])
+  post Post @relation(fields: [postId], references: [id])
+
+  @@unique([userId, postId])
+}
+
+model Comment {
+  id     String @id @default(uuid())
+  userId String
+  postId String
+
+  content String
+
+  user User @relation(fields: [userId], references: [id])
+  post Post @relation(fields: [postId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Follower {
+  id          String @id @default(uuid())
+  followingId String
+  followerId  String
+
+  following User @relation("following", fields: [followingId], references: [id])
+  follower  User @relation("followers", fields: [followerId], references: [id])
+
+  @@unique([followingId, followerId])
+}
