@@ -7,7 +7,7 @@ import { IntersectionType, OmitType } from '@nestjs/mapped-types';
 export class BaseUserDto extends OmitType(BaseDataUserDto, ['password']) {}
 
 export class UpdateUserDto extends IntersectionType(
-  BaseDataUserDto,
+  BaseUserDto,
   TeacherDto,
   StudentDto,
   CenterDto,

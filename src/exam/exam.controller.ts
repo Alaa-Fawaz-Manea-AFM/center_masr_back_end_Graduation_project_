@@ -6,40 +6,58 @@ import {
   Patch,
   Param,
   Delete,
+  Req,
+  ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import { ExamService } from './exam.service';
 import { CreateExamDto } from './dto/create-exam.dto';
-import { UpdateExamDto } from './dto/update-exam.dto';
 import AuthDecorator from 'src/decorator/auth.decorator';
 
 @Controller('exams')
 export class ExamController {
   constructor(private readonly examService: ExamService) {}
 
-  @AuthDecorator()
-  @Post()
-  create(@Body() createExamDto: CreateExamDto) {
-    return this.examService.create(createExamDto);
+  @Post(':lessonId')
+  create(
+    @Param('lessonId', ParseUUIDPipe) lessonId: string,
+    @Query('courseId', ParseUUIDPipe) courseId: string,
+    @Body() createExamDto: CreateExamDto,
+    @Req() req,
+  ) {
+    return this.examService.create(
+      req.user.profileId,
+      lessonId,
+      courseId,
+      createExamDto,
+    );
   }
 
-  @AuthDecorator()
   @Get()
-  findAll() {
-    return this.examService.findAll();
+  findAll(@Query('courseId', ParseUUIDPipe) courseId: string, @Req() req) {
+    return this.examService.findAll(courseId, req.user.profileId);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.examService.findOne(+id);
+  @Get(':examId')
+  findOne(@Param('examId', ParseUUIDPipe) examId: string, @Req() req) {
+    return this.examService.findOne(req.user.profileId, examId);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateExamDto: UpdateExamDto) {
-    return this.examService.update(+id, updateExamDto);
+  @Patch(':examId')
+  update(
+    @Param('examId', ParseUUIDPipe) examId: string,
+    @Body() updateExamDto: CreateExamDto,
+    @Req() req,
+  ) {
+    return this.examService.update(examId, req.user.profileId, updateExamDto);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.examService.remove(+id);
+  @Delete(':examId')
+  remove(
+    @Param('examId', ParseUUIDPipe) examId: string,
+    @Query('courseId', ParseUUIDPipe) courseId: string,
+    @Req() req,
+  ) {
+    return this.examService.remove(req.user.profileId, examId, courseId);
   }
 }

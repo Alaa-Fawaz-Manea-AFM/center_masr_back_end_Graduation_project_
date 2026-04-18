@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
   Req,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { UsersService } from './user.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -27,65 +28,43 @@ export class UsersController {
   ) {}
 
   @Get()
-  async getAllUsers(
+  getAllUsers(
     @Body() getAllUsersDto: GetAllUsersDto,
     @Query() queryDto: QueryDto,
   ) {
     const { page = 1, limit = 6 } = queryDto;
 
-    const users = await this.usersService.getAllUsers(
-      getAllUsersDto,
-      +page,
-      +limit,
-    );
-    return sendResponsive(users, 'Users retrieved successfully');
+    return this.usersService.getAllUsers(getAllUsersDto, +page, +limit);
   }
 
   @Get(':id')
-  @UseGuards(AuthGuard)
-  async getUser(
-    @Param('id') targetUserId: string,
+  getUser(
+    @Param('id', ParseUUIDPipe) targetUserId: string,
     @Body('role') role: RoleTeacherAndCenterDto,
     @Req() req,
   ) {
-    const user = await this.usersService.getUserById(
-      targetUserId,
-      role,
-      req?.user?.userId,
-    );
-
-    return {
-      status: 'success',
-      data: user,
-      message: 'User retrieved successfully',
-    };
+    return this.usersService.getUserById(targetUserId, role, req?.user?.userId);
   }
 
-  @Patch(':id')
-  async updateUser(
-    @Param('id') id: string,
+  @Patch(':userId')
+  updateUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
     @Body() updateUserDto: UpdateUserDto,
   ) {
     const { userData, profileData, extraProfileData } =
       this.ProfileService.buildProfileData(updateUserDto.role, updateUserDto);
 
-    const user = await this.usersService.updateUser(
-      id,
+    return this.usersService.updateUser(
+      userId,
       updateUserDto.role,
       userData,
       profileData,
       extraProfileData,
     );
-    return {
-      status: 'success',
-      data: user,
-      message: 'User updated successfully',
-    };
   }
 
-  @Delete(':id')
-  async deleteUser(@Param('id') id: string) {
-    await this.usersService.deleteUser(id);
-    return { status: 'success', message: 'User deleted successfully' };
+  @Delete(':userId')
+  deleteUser(@Param('userId', ParseUUIDPipe) userId: string) {
+    return this.usersService.deleteUser(userId);
   }
 }

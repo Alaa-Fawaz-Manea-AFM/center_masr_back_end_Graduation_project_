@@ -18,22 +18,22 @@ export class WeeklyScheduleService {
     currentUserId?: string,
     role?: string,
   ) {
-    const center = await this.prisma.center.findUnique({
-      where: { id: centerId },
-    });
-
-    if (!center) {
-      throw new NotFoundException('center not found');
-    }
-
     const days = await this.prisma.weeklySchedule.findMany({
       where: { centerId, classRoom },
-      include: {
+
+      select: {
         teacherDays: {
           orderBy: { time: 'asc' },
-          include: {
+
+          select: {
+            id: true,
+            day: true,
+            time: true,
+            studyMaterial: true,
+
             teacher: {
-              include: {
+              select: {
+                id: true,
                 user: {
                   select: {
                     name: true,
@@ -42,13 +42,6 @@ export class WeeklyScheduleService {
                 },
               },
             },
-            ...(currentUserId &&
-              role === STUDENT && {
-                bookeds: {
-                  where: { studentId: currentUserId },
-                  select: { id: true },
-                },
-              }),
           },
         },
       },
@@ -56,22 +49,37 @@ export class WeeklyScheduleService {
 
     const schedule: Record<string, any[]> = {};
 
-    weekDays.forEach((d) => (schedule[d] = []));
+    weekDays.forEach((day) => {
+      schedule[day] = [];
+    });
 
-    days.forEach((day) => {
-      day.teacherDays.forEach((lesson) => {
-        const isBooked =
-          role === 'student' && currentUserId ? lesson.bookeds : false;
+    let bookedSet = new Set<string>();
 
+    if (currentUserId && role === 'student') {
+      const bookings = await this.prisma.bookedWeekly.findMany({
+        where: {
+          studentId: currentUserId,
+        },
+        select: {
+          teacherDayId: true,
+        },
+      });
+
+      bookedSet = new Set(bookings.map((b) => b.teacherDayId));
+    }
+
+    days.forEach((group) => {
+      group.teacherDays.forEach((lesson) => {
         schedule[lesson.day].push({
           id: lesson.id,
           time: lesson.time,
           studyMaterial: lesson.studyMaterial,
-          isBooked,
+
+          isBooked: bookedSet.has(lesson.id),
+
           teacher: lesson.teacher
             ? {
                 id: lesson.teacher.id,
-                userId: lesson.teacher.userId,
                 name: lesson.teacher.user.name,
                 imageUrl: lesson.teacher.user.imageUrl,
               }
@@ -135,6 +143,7 @@ export class WeeklyScheduleService {
     return this.prisma.$transaction(async (prisma) => {
       const existing = await prisma.weeklySchedule.findFirst({
         where: { centerId, classRoom },
+        select: { id: true },
       });
 
       if (existing) {
@@ -142,20 +151,29 @@ export class WeeklyScheduleService {
       }
 
       const weekDay = await prisma.weeklySchedule.create({
-        data: { centerId, classRoom },
+        data: {
+          centerId,
+          classRoom,
+        },
+        select: {
+          id: true,
+          centerId: true,
+          classRoom: true,
+        },
       });
 
       const weekly_scheduleId = weekDay.id;
 
       const teacherIds = [...new Set(dataDays.map((d) => d.teacherId))];
 
-      const teachers = await prisma.teacher.findMany({
+      const validTeachers = await prisma.teacher.findMany({
         where: { id: { in: teacherIds } },
         select: { id: true },
       });
 
-      const validIds = new Set(teachers.map((t) => t.id));
-      const invalidIds = teacherIds.filter((id) => !validIds.has(id));
+      const validSet = new Set(validTeachers.map((t) => t.id));
+
+      const invalidIds = teacherIds.filter((id) => !validSet.has(id));
 
       if (invalidIds.length) {
         throw new BadRequestException(
@@ -163,82 +181,60 @@ export class WeeklyScheduleService {
         );
       }
 
-      const teacherDays = await prisma.teacherDay.createMany({
-        data: dataDays.map((item) => ({
-          ...item,
-          weekly_scheduleId,
-        })),
+      const teacherDaysData = dataDays.map((item) => ({
+        teacherId: item.teacherId,
+        day: item.day,
+        time: item.time,
+        studyMaterial: item.studyMaterial,
+        weekly_scheduleId,
+      }));
+
+      const result = await prisma.teacherDay.createMany({
+        data: teacherDaysData,
       });
 
       return {
-        weekDay,
-        teacherDays,
+        weeklySchedule: weekDay,
+        teacherDaysCreated: result.count,
       };
     });
   }
-
   async updateWeeklySchedule(id: string, data: any, centerId: string) {
-    return this.prisma.$transaction(async (prisma) => {
-      const teacherDay = await prisma.teacherDay.findUnique({
-        where: { id },
-        include: {
-          weekly_schedule: {
-            select: { centerId: true },
-          },
+    const updated = await this.prisma.teacherDay.updateMany({
+      where: {
+        id,
+        weekly_schedule: {
+          centerId,
         },
-      });
-
-      if (!teacherDay) {
-        throw new NotFoundException('teacher weekly schedule not found');
-      }
-
-      if (teacherDay.weekly_schedule.centerId !== centerId) {
-        throw new ForbiddenException('Not allowed');
-      }
-
-      const teacher = await prisma.teacher.findUnique({
-        where: { id: data.teacherId },
-      });
-
-      if (!teacher) {
-        throw new BadRequestException(`Invalid teacherId: ${data.teacherId}`);
-      }
-
-      const updated = await prisma.teacherDay.update({
-        where: { id },
-        data,
-      });
-
-      return updated;
+      },
+      data,
     });
+
+    if (updated.count === 0) {
+      throw new NotFoundException('Not found or not allowed');
+    }
+
+    return {
+      message: 'Updated successfully',
+    };
   }
 
   async deleteWeeklySchedule(id: string, centerId: string) {
-    return this.prisma.$transaction(async (prisma) => {
-      const teacherDay = await prisma.teacherDay.findUnique({
-        where: { id },
-        include: {
-          weekly_schedule: {
-            select: { centerId: true },
-          },
+    const result = await this.prisma.teacherDay.deleteMany({
+      where: {
+        id,
+        weekly_schedule: {
+          centerId,
         },
-      });
-
-      if (!teacherDay) {
-        throw new NotFoundException('teacher weekly schedule not found');
-      }
-
-      if (teacherDay.weekly_schedule.centerId !== centerId) {
-        throw new ForbiddenException('Not allowed');
-      }
-
-      await prisma.teacherDay.delete({
-        where: { id },
-      });
-
-      return {
-        message: 'Weekly schedule deleted successfully',
-      };
+      },
     });
+
+    if (result.count === 0) {
+      throw new NotFoundException('Not found or not allowed');
+    }
+
+    return {
+      message: 'Weekly schedule deleted successfully',
+    };
   }
 }

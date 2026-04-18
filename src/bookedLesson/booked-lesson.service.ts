@@ -2,53 +2,46 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 
 @Injectable()
-export class BookedWeeklyService {
+export class BookedLessonService {
   constructor(private prisma: PrismaService) {}
+
   async toggleBookedStudent(studentId: string, lessonId: string) {
     return this.prisma.$transaction(async (prisma) => {
-      const lesson = await prisma.lesson.findUnique({
-        where: { id: lessonId },
-        select: { id: true },
-      });
-
-      if (!lesson) {
-        throw new NotFoundException('Teacher day not found');
-      }
-
-      const existingBookingWeekly = await prisma.bookedWeekly.findUnique({
-        where: {
-          studentId_lessonId: {
-            studentId,
-            lessonId,
-          },
-        },
-      });
-
-      let message = 'Booked';
-
-      if (!existingBookingWeekly) {
-        await prisma.bookedWeekly.create({
+      try {
+        await prisma.bookedLesson.create({
           data: {
-            studentId,
             lessonId,
+            studentId,
           },
         });
-      } else {
-        await prisma.bookedWeekly.delete({
-          where: {
-            studentId_lessonId: {
-              studentId,
-              lessonId,
+
+        return {
+          message: 'Lesson booked successfully',
+          isBooked: true,
+        };
+      } catch (error: any) {
+        if (error.code === 'P2002') {
+          await prisma.bookedLesson.delete({
+            where: {
+              studentId_lessonId: {
+                studentId,
+                lessonId,
+              },
             },
-          },
-        });
+          });
 
-        message = 'Unbooked';
+          return {
+            message: 'Lesson unbooked successfully',
+            isBooked: false,
+          };
+        }
+
+        if (error.code === 'P2003') {
+          throw new NotFoundException('Lesson not found');
+        }
+
+        throw error;
       }
-
-      return {
-        message: `Weekly ${message} successfully`,
-      };
     });
   }
 }

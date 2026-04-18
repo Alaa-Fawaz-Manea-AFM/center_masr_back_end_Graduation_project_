@@ -1,4 +1,4 @@
-const sendResponsive = (data: any, message: string, token?: string) => {
-  return { status: 'success', data, message, token };
+const sendResponsive = (data: any, message: string) => {
+  return { status: 'success', message, data };
 };
 export default sendResponsive;

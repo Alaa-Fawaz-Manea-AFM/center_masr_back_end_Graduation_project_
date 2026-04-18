@@ -24,10 +24,8 @@ export class AuthGuard implements CanActivate {
 
     if (isPublic) return true;
 
-    const request = context.switchToHttp().getRequest<Request>();
-    const token =
-      request.cookies?.accessToken ||
-      request.headers?.authorization?.split(' ')[1];
+    const req = context.switchToHttp().getRequest<Request>();
+    const token = req.cookies?.accessToken;
 
     if (!token) {
       throw new UnauthorizedException('You are not logged in');
@@ -37,7 +35,7 @@ export class AuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync(token, {
         secret: process.env.JWT_SECRET_KEY,
       });
-      request['user'] = {
+      req['user'] = {
         userId: payload.userId,
         profileId: payload.profileId,
         role: payload.role,

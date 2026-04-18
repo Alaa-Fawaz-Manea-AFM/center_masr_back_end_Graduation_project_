@@ -14,41 +14,44 @@ import {
 import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { LessonService } from './lesson.service';
-import { GetAllLessonDto } from './dto/getAllLessonDto';
 import RolesDecorator from 'src/decorator/roles.decorator';
 
 @Controller('lessons')
 export class LessonController {
   constructor(private readonly lessonService: LessonService) {}
 
-  @Get(':id')
-  getLesson(@Param('id', ParseUUIDPipe) lessonId: string, @Req() req) {
+  @Get(':lessonId')
+  getLesson(@Param('lessonId', ParseUUIDPipe) lessonId: string, @Req() req) {
     return this.lessonService.getLesson(lessonId, req.user.profileId);
   }
 
   @Get()
   getAllLessons(
     @Query('page', ParseIntPipe) page: number,
-    @Body() getAllLessons: GetAllLessonDto,
+    @Query('courseId', ParseUUIDPipe) courseId: string,
     @Req() req,
   ) {
-    return this.lessonService.getAllLessons(
+    return this.lessonService.getAllLessons(page, req.user.profileId, courseId);
+  }
+
+  @RolesDecorator('teacher')
+  @Post(':courseId')
+  createLesson(
+    @Param('courseId', ParseUUIDPipe) courseId: string,
+    @Body() createLessonDto: CreateLessonDto,
+    @Req() req,
+  ) {
+    return this.lessonService.createLesson(
       req.user.profileId,
-      page,
-      getAllLessons,
+      courseId,
+      createLessonDto,
     );
   }
 
-  @Post()
   @RolesDecorator('teacher')
-  createLesson(@Body() createLessonDto: CreateLessonDto, @Req() req) {
-    return this.lessonService.createLesson(req.user.profileId, createLessonDto);
-  }
-
-  @RolesDecorator('teacher')
-  @Patch(':id')
+  @Patch(':lessonId')
   updateLesson(
-    @Param('id', ParseUUIDPipe) lessonId: string,
+    @Param('lessonId', ParseUUIDPipe) lessonId: string,
     @Body() updateLessonDto: UpdateLessonDto,
     @Req() req,
   ) {
@@ -60,8 +63,16 @@ export class LessonController {
   }
 
   @RolesDecorator('teacher')
-  @Delete(':id')
-  deleteLesson(@Param('id', ParseUUIDPipe) lessonId: string, @Req() req) {
-    return this.lessonService.deleteLesson(req.user.profileId, lessonId);
+  @Delete(':lessonId')
+  deleteLesson(
+    @Param('lessonId', ParseUUIDPipe) lessonId: string,
+    @Query('courseId', ParseUUIDPipe) courseId: string,
+    @Req() req,
+  ) {
+    return this.lessonService.deleteLesson(
+      req.user.profileId,
+      lessonId,
+      courseId,
+    );
   }
 }

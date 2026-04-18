@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
-import { roleTeacherAndCenterSet } from 'src/utils';
+import { roleTeacherAndCenterSet, sendResponsive } from 'src/utils';
 
 @Injectable()
 export class FollowerService {
@@ -21,12 +21,10 @@ export class FollowerService {
       }
 
       if (!roleTeacherAndCenterSet.has(targetUser.role)) {
-        throw new BadRequestException(
-          'Invalid role must be (teacher or center)',
-        );
+        throw new BadRequestException('Invalid role (teacher or center only)');
       }
 
-      const follow = await prisma.follower.findUnique({
+      const existingFollow = await prisma.follower.findUnique({
         where: {
           followingId_followerId: {
             followerId: currentUserId,
@@ -35,30 +33,36 @@ export class FollowerService {
         },
       });
 
-      const isFollowing = !!follow;
+      const isFollowing = !!existingFollow;
 
-      await Promise.all([
-        isFollowing
-          ? prisma.follower.delete({
-              where: {
-                followingId_followerId: {
-                  followerId: currentUserId,
-                  followingId: targetUserId,
-                },
-              },
-            })
-          : prisma.follower.create({
-              data: {
+      try {
+        if (isFollowing) {
+          await prisma.follower.delete({
+            where: {
+              followingId_followerId: {
                 followerId: currentUserId,
                 followingId: targetUserId,
               },
-            }),
+            },
+          });
+        } else {
+          await prisma.follower.create({
+            data: {
+              followerId: currentUserId,
+              followingId: targetUserId,
+            },
+          });
+        }
+      } catch (error) {
+        throw new BadRequestException('error follwer');
+      }
 
+      await Promise.all([
         prisma.user.update({
           where: { id: targetUserId },
           data: {
             followerCounts: {
-              [isFollowing ? 'decrement' : 'increment']: 1,
+              increment: isFollowing ? -1 : 1,
             },
           },
         }),
@@ -67,15 +71,16 @@ export class FollowerService {
           where: { id: currentUserId },
           data: {
             followingCounts: {
-              [isFollowing ? 'decrement' : 'increment']: 1,
+              increment: isFollowing ? -1 : 1,
             },
           },
         }),
       ]);
 
-      return {
-        message: `User ${isFollowing ? 'unfollowed' : 'followed'} successfully`,
-      };
+      return sendResponsive(
+        null,
+        `User ${isFollowing ? 'unfollowed' : 'followed'} successfully`,
+      );
     });
   }
 }

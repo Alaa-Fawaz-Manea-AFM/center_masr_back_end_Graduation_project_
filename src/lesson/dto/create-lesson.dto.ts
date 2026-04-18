@@ -4,6 +4,7 @@ import {
   MaxLength,
   Matches,
   IsOptional,
+  IsUUID,
 } from 'class-validator';
 
 const videoUrlRegex =
@@ -14,12 +15,6 @@ export class CreateLessonDto {
   @MinLength(3)
   @MaxLength(100)
   title!: string;
-
-  @IsString()
-  classRoom!: string;
-
-  @IsString()
-  studyMaterial!: string;
 
   @IsString()
   @MinLength(3)

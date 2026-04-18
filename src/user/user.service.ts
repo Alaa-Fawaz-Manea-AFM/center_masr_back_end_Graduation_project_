@@ -6,12 +6,18 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { GetAllUsersDto } from './dto/getAllUsersDto';
-import { roleTeacherAndCenterSet } from 'src/utils';
+import {
+  CENTER,
+  roleTeacherAndCenterSet,
+  sendResponsive,
+  TEACHER,
+} from 'src/utils';
 import {
   ExtraProfileDataType,
   ProfileDataType,
   UserDataType,
 } from 'src/types/type';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
@@ -27,6 +33,11 @@ export class UsersService {
     role: string,
     currentUserId?: string,
   ) {
+    const includeAndOmit = {
+      include: true,
+      omit: { userId: true },
+    };
+
     if (!roleTeacherAndCenterSet.has(role))
       throw new BadRequestException('invalid Role, must be teacher or center');
 
@@ -34,8 +45,8 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { id: targetUserId },
       include: {
-        [role]: true,
-        [profileRole]: true,
+        [role]: includeAndOmit,
+        [profileRole]: includeAndOmit,
       },
       omit: { email: true, password: true, updatedAt: true },
     });
@@ -59,78 +70,96 @@ export class UsersService {
       isFollowed = !!follow;
     }
 
-    return { ...user, isFollowed, role };
+    return sendResponsive(
+      {
+        ...user,
+        isFollowed,
+        role,
+      },
+      'User retrieved successfully',
+    );
   }
 
   async getAllUsers(filters: GetAllUsersDto, page = 1, limit = 6) {
-    const offset = (page - 1) * limit;
-    const { role } = filters;
+    const skip = (page - 1) * limit;
+    const { role, name } = filters;
 
-    let profileWhere: any = {};
-    if (filters.role === 'teacher') {
-      if (filters.classRoom) {
-        profileWhere.classRoom = {
-          contains: filters.classRoom,
-          mode: 'insensitive',
-        };
-      }
-
-      if (filters.studyMaterial) {
-        profileWhere.studyMaterial = {
-          contains: filters.studyMaterial,
-          mode: 'insensitive',
-        };
-      }
-    }
-
-    if (filters.role === 'center') {
-      if (filters.educationalStage) {
-        profileWhere.educationalStage = {
-          has: filters.educationalStage,
-        };
-      }
-
-      if (filters.governorate) {
-        profileWhere.governorate = {
-          contains: filters.governorate,
-          mode: 'insensitive',
-        };
-      }
-    }
-
-    let userWhere: any = {};
-    if (filters.name) {
-      userWhere.name = {
-        contains: filters.name,
-        mode: 'insensitive',
-      };
-      profileWhere = {};
-    }
-
-    const relationMap = {
-      teacher: 'teacher',
-      center: 'center',
+    const baseWhere: any = {
+      role,
     };
 
-    const relation = relationMap[filters.role];
+    if (name) {
+      baseWhere.name = {
+        contains: name,
+        mode: 'insensitive',
+      };
+    }
+
+    if (role === TEACHER) {
+      baseWhere.teacher = {
+        ...(filters.classRoom && {
+          classRoom: {
+            contains: filters.classRoom,
+            mode: 'insensitive',
+          },
+        }),
+        ...(filters.studyMaterial && {
+          studyMaterial: {
+            contains: filters.studyMaterial,
+            mode: 'insensitive',
+          },
+        }),
+      };
+    }
+
+    if (role === CENTER) {
+      baseWhere.center = {
+        ...(filters.educationalStage && {
+          educationalStage: {
+            has: filters.educationalStage,
+          },
+        }),
+        ...(filters.governorate && {
+          governorate: {
+            contains: filters.governorate,
+            mode: 'insensitive',
+          },
+        }),
+      };
+    }
 
     const users = await this.prisma.user.findMany({
-      where: {
-        role,
-        name: filters.name
-          ? { contains: filters.name, mode: 'insensitive' }
-          : undefined,
-        [relation]: Object.keys(profileWhere).length
-          ? { AND: [profileWhere] }
-          : undefined,
-      },
+      where: baseWhere,
+
       select: {
         id: true,
         name: true,
         imageUrl: true,
-        [role]: true,
+
+        teacher:
+          role === TEACHER
+            ? {
+                select: {
+                  id: true,
+                  classRoom: true,
+                  studyMaterial: true,
+                },
+              }
+            : undefined,
+        center:
+          role === CENTER
+            ? {
+                select: {
+                  id: true,
+                  educationalStage: true,
+                  governorate: true,
+                  studySystem: true,
+                },
+              }
+            : undefined,
       },
-      skip: offset,
+
+      skip,
       take: limit,
     });
 
@@ -139,56 +168,82 @@ export class UsersService {
 
   async updateUser(
     id: string,
-    role: string,
+    role: Role,
     userData: UserDataType,
     profileData: ProfileDataType,
-    extraPrifileData: ExtraProfileDataType,
+    extraProfileData: ExtraProfileDataType,
   ) {
-    const include = { [role]: true };
-    const prifileRole = this.toUpperCase(role);
-
-    if (roleTeacherAndCenterSet.has(role)) {
-      include[prifileRole] = true;
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      include,
-    });
-    if (!user) throw new NotFoundException('User not found');
-
-    const currentRole = user.role;
-    if (role && role !== currentRole) {
-      throw new ForbiddenException("You can't update user role");
-    }
-
     return this.prisma.$transaction(async (prisma) => {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true, role: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (role !== user.role) {
+        throw new ForbiddenException("You can't change user role");
+      }
+
       const updatedUser = await prisma.user.update({
         where: { id },
         data: userData,
       });
 
-      const updatedUserProfile = await prisma[role].update({
-        where: { id },
-        data: profileData,
-      });
+      let profileUpdateResult: any = null;
+      let extraUpdateResult: any = null;
 
-      let extraUpdatePrifileData = {};
-      if (roleTeacherAndCenterSet.has(role)) {
-        extraUpdatePrifileData = await prisma[prifileRole].update({
+      if (role === TEACHER) {
+        profileUpdateResult = await prisma.profileTeacher.update({
           where: { userId: id },
-          data: extraPrifileData,
+          data: profileData as any,
         });
       }
-      return { updatedUser, updatedUserProfile, extraUpdatePrifileData };
+
+      if (role === 'center') {
+        profileUpdateResult = await prisma.profileCenter.update({
+          where: { userId: id },
+          data: profileData as any,
+        });
+
+        extraUpdateResult = await prisma.profileCenter.update({
+          where: { userId: id },
+          data: extraProfileData,
+        });
+      }
+
+      if (role === 'student') {
+        profileUpdateResult = await prisma.student.update({
+          where: { userId: id },
+          data: profileData as any,
+        });
+      }
+
+      return sendResponsive(
+        {
+          updatedUser,
+          profileUpdateResult,
+          extraUpdateResult,
+        },
+        'User retrieved successfully',
+      );
     });
   }
 
   async deleteUser(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
+    return await this.prisma.$transaction(async (prisma) => {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: { id: true },
+      });
 
-    await this.prisma.user.delete({ where: { id } });
-    return true;
+      if (!user) throw new NotFoundException('User not found');
+
+      await prisma.user.delete({
+        where: { id },
+      });
+    });
   }
 }

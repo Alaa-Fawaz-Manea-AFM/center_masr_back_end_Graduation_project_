@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { BookedWeeklyService } from './booked-lesson.service';
-import { BookedWeeklyController } from './booked-lesson.controller';
+import { BookedLessonService } from './booked-lesson.service';
+import { BookedLessonController } from './booked-lesson.controller';
 
 @Module({
-  controllers: [BookedWeeklyController],
-  providers: [BookedWeeklyService],
+  controllers: [BookedLessonController],
+
+  providers: [BookedLessonService],
 })
 export class BookedLessonModule {}

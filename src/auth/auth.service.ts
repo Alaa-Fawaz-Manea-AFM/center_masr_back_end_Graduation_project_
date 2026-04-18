@@ -6,12 +6,18 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import AppConfig from '../config/app.config';
-import { IfAppError, roleTeacherAndCenterSet } from 'src/utils';
+import {
+  IfAppError,
+  roleTeacherAndCenterSet,
+  sendResponsive,
+  STUDENT,
+} from 'src/utils';
 import { JwtService } from '@nestjs/jwt';
 import SignUpAuthDto from './dto/sign-up-auth.dto';
 import SignInAuthDto from './dto/sign-in-auth.dto';
 import { compare, hash } from 'bcrypt';
 import { PayloadTokenType } from 'src/types/type';
+import { Response } from 'express';
 
 @Injectable()
 export class AuthService {
@@ -27,7 +33,7 @@ export class AuthService {
     return `profile${data}`;
   }
 
-  async signUp(signUpAuthDto: SignUpAuthDto) {
+  async signUp(signUpAuthDto: SignUpAuthDto, res: Response) {
     const { email, role } = signUpAuthDto;
 
     const existingUser = await this.prisma.user.findUnique({
@@ -68,23 +74,49 @@ export class AuthService {
         create: { userId, token: hashRefreshToken },
       });
 
-      return {
-        user,
-        accessToken,
-        refreshToken,
-      };
+      res.cookie('accessToken', accessToken);
+      res.cookie('refreshToken', refreshToken);
+
+      return sendResponsive(
+        {
+          id: userId,
+          name: user.name,
+          imageUrl: user.imageUrl,
+          role: role,
+          profileId: roleModel.id,
+        },
+        'Logged in successfully',
+      );
     });
   }
 
-  async login(signInAuthDto: SignInAuthDto) {
+  async login(signInAuthDto: SignInAuthDto, res: Response) {
     const { email, password } = signInAuthDto;
 
     const user = await this.prisma.user.findUnique({
       where: { email },
-      include: {
-        teacher: true,
-        center: true,
-        student: true,
+      select: {
+        id: true,
+        name: true,
+        imageUrl: true,
+        password: true,
+        role: true,
+
+        teacher: {
+          select: {
+            id: true,
+          },
+        },
+        center: {
+          select: {
+            id: true,
+          },
+        },
+        student: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
 
@@ -118,19 +150,33 @@ export class AuthService {
       create: { userId, token: hashRefreshToken },
     });
 
-    return { user, accessToken, refreshToken };
+    res.cookie('accessToken', accessToken);
+    res.cookie('refreshToken', refreshToken);
+
+    return sendResponsive(
+      {
+        id: userId,
+        name: user.name,
+        imageUrl: user.imageUrl,
+        role: role,
+        profileId,
+      },
+      'Logged in successfully',
+    );
   }
 
-  async logout(userId: string) {
+  async logout(userId: string, res: Response) {
     await this.prisma.refreshToken.deleteMany({
       where: { userId },
     });
 
-    return true;
+    res.clearCookie('accessToken').clearCookie('refreshToken');
+
+    return sendResponsive(null, 'Logged out successfully');
   }
 
-  async refreshToken(oldToken: string) {
-    let payload: any;
+  async refreshToken(oldToken: string, res: Response) {
+    let payload: PayloadTokenType;
 
     try {
       payload = await this.jwtService.verifyAsync(oldToken, {
@@ -155,27 +201,41 @@ export class AuthService {
       role: payload.role,
     });
 
-    return { accessToken: newAccessToken };
+    res.cookie('accessToken', newAccessToken);
+
+    return sendResponsive(null, 'refresh token successfully');
   }
 
   async getMe(userId: string, role: string) {
     const include = {};
 
-    include[role] = true;
+    const includeAndOmit = {
+      include: true,
+      omit: { userId: true },
+    };
+    include[role] = includeAndOmit;
     if (roleTeacherAndCenterSet.has(role)) {
-      include[this.toUpperCase(role)] = true;
+      include[`profile_${role}`] = includeAndOmit;
     }
 
+    const omit =
+      role === STUDENT
+        ? {
+            followingCounts: true,
+            postCounts: true,
+          }
+        : {};
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include,
+      omit: { updatedAt: true, email: true, password: true, ...omit },
     });
 
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    return user;
+    return sendResponsive(user, 'User data successfully');
   }
 
   async JWTSign(payload: PayloadTokenType, refresh: boolean = false) {

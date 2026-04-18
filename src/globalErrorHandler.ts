@@ -1,29 +1,74 @@
 import {
-  ExceptionFilter,
   Catch,
+  Logger,
+  HttpStatus,
   ArgumentsHost,
   HttpException,
+  ExceptionFilter,
 } from '@nestjs/common';
+
+const logger = new Logger('GlobalException');
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
+    logger.error(exception.message);
     const ctx = host.switchToHttp();
     const res = ctx.getResponse();
+    const req = ctx.getRequest();
+
+    const isDev = process.env.NODE_ENV === 'development';
+
+    let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+    let message = 'Something went very wrong';
+    let status = 'error';
 
     if (exception instanceof HttpException) {
-      const status = exception.getStatus();
-      const response = exception.getResponse();
+      statusCode = exception.getStatus();
 
-      return res.status(status).json({
-        status: (response as any)?.status || (status < 500 ? 'fail' : 'error'),
-        message: (response as any)?.message || exception.message,
+      const response: any = exception.getResponse();
+
+      message = response?.message || exception.message;
+      status = statusCode < 500 ? 'fail' : 'error';
+    }
+
+    if (exception.name === 'JsonWebTokenError') {
+      statusCode = 401;
+      message = 'Invalid token';
+    }
+
+    if (exception.name === 'TokenExpiredError') {
+      statusCode = 401;
+      message = 'Token expired, please login again';
+    }
+
+    if (exception.code === 'P2002') {
+      statusCode = 400;
+      message = 'Duplicate field value';
+    }
+
+    if (exception.code === 'P2003') {
+      statusCode = 400;
+      message = 'Invalid reference ID';
+    }
+
+    if (exception.code === 'P2025') {
+      statusCode = 404;
+      message = 'Record not found';
+    }
+
+    if (isDev) {
+      return res.status(statusCode).json({
+        status,
+        message,
+        stack: exception.stack,
+        path: req.url,
       });
     }
 
-    return res.status(500).json({
-      status: 'error',
-      message: 'Something went wrong',
+    return res.status(statusCode).json({
+      status,
+      message,
     });
   }
 }

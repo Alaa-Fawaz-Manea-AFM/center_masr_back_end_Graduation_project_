@@ -1,9 +1,9 @@
 import { Controller, Post, Param, Req, ParseUUIDPipe } from '@nestjs/common';
-import { BookedService } from './booked.service';
+import { BookedWeeklyService } from './booked.weekly.service';
 
 @Controller('booked/weekly-schedules')
-export class BookedController {
-  constructor(private readonly bookedService: BookedService) {}
+export class BookedWeeklyController {
+  constructor(private readonly bookedService: BookedWeeklyService) {}
 
   @Post(':id')
   toggleBooked(@Param('id', ParseUUIDPipe) teacherDayId: string, @Req() req) {

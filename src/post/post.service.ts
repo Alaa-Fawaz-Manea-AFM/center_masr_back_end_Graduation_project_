@@ -1,9 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PrismaService } from 'src/prisma.service';
 import { RoleEnumDto } from 'src/validators/rolesDto';
 import GetAllPostsDto from './dto/get-All-posts.dto';
+import { roleTeacherAndCenterSet, sendResponsive } from 'src/utils';
 
 @Injectable()
 export class PostService {
@@ -12,31 +17,20 @@ export class PostService {
   async getPost(postId: string, currentUserId?: string) {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        imageUrl: true,
+        createdAt: true,
 
-      include: {
         user: {
           select: {
             id: true,
             name: true,
             imageUrl: true,
-
-            followers: currentUserId
-              ? {
-                  where: {
-                    followerId: currentUserId,
-                  },
-                  select: { id: true },
-                }
-              : false,
           },
         },
-
-        likes: currentUserId
-          ? {
-              where: { userId: currentUserId },
-              select: { id: true },
-            }
-          : false,
       },
     });
 
@@ -44,18 +38,44 @@ export class PostService {
       throw new NotFoundException('Post not found');
     }
 
-    return {
-      ...post,
-      isLiked: currentUserId ? post.likes.length > 0 : false,
+    let isLiked = false;
+    let isFollowed = false;
 
-      user: {
-        ...post.user,
-        isFollowed: currentUserId ? post.user.followers.length > 0 : false,
-        followers: undefined,
+    if (currentUserId) {
+      const [like, follow] = await Promise.all([
+        this.prisma.like.findUnique({
+          where: {
+            userId_postId: {
+              userId: currentUserId,
+              postId,
+            },
+          },
+          select: { id: true },
+        }),
+
+        this.prisma.follower.findUnique({
+          where: {
+            followingId_followerId: {
+              followerId: currentUserId,
+              followingId: post.user.id,
+            },
+          },
+          select: { id: true },
+        }),
+      ]);
+
+      isLiked = !!like;
+      isFollowed = !!follow;
+    }
+
+    return sendResponsive(
+      {
+        ...post,
+        isLiked,
+        isFollowed,
       },
-
-      likes: undefined,
-    };
+      'Post retrieved successfully',
+    );
   }
 
   async getAllPosts(filters: GetAllPostsDto, userId?: string, page = 1) {
@@ -66,7 +86,15 @@ export class PostService {
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
-      include: {
+
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        imageUrl: true,
+        likeCounts: true,
+        commentCounts: true,
+        createdAt: true,
         user: {
           select: {
             id: true,
@@ -74,21 +102,36 @@ export class PostService {
             imageUrl: true,
           },
         },
-
-        likes: userId
-          ? {
-              where: { userId },
-              select: { id: true },
-            }
-          : false,
       },
     });
 
-    return posts.map((post) => ({
-      ...post,
-      isLiked: userId ? post.likes.length > 0 : false,
-      likes: undefined,
-    }));
+    const postIds = posts.map((p) => p.id);
+
+    let likedSet = new Set<string>();
+
+    if (userId) {
+      const likes = await this.prisma.like.findMany({
+        where: {
+          userId,
+          postId: { in: postIds },
+        },
+        select: {
+          postId: true,
+        },
+      });
+
+      likedSet = new Set(likes.map((l) => l.postId));
+    }
+
+    return sendResponsive(
+      {
+        posts: posts.map((post) => ({
+          ...post,
+          isLiked: likedSet.has(post.id),
+        })),
+      },
+      'Posts retrieved successfully',
+    );
   }
 
   async createPost(
@@ -96,38 +139,31 @@ export class PostService {
     userId: string,
     role: RoleEnumDto,
   ) {
+    if (!roleTeacherAndCenterSet.has(role)) {
+      throw new ForbiddenException('Only teacher or center can create posts');
+    }
+
     return this.prisma.$transaction(async (prisma) => {
-      const user = await prisma.user.update({
-        where: { id: userId },
-        data: {
-          postCounts: { increment: 1 },
-        },
-        select: {
-          id: true,
-          postCounts: true,
-        },
-      });
+      const [newPost] = await Promise.all([
+        prisma.post.create({
+          data: {
+            ...dataPostsDto,
+            userId,
+            role,
+          },
+        }),
 
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
+        prisma.user.update({
+          where: { id: userId },
+          data: {
+            postCounts: { increment: 1 },
+          },
+        }),
+      ]);
 
-      const newPost = await prisma.post.create({
-        data: {
-          ...dataPostsDto,
-          userId,
-          role,
-        },
-      });
-
-      if (!newPost) {
-        throw new NotFoundException('Error creating post');
-      }
-
-      return newPost;
+      return sendResponsive(newPost, 'Post created successfully');
     });
   }
-
   async updatePost(postId: string, userId: string, data: UpdatePostDto) {
     const result = await this.prisma.post.updateMany({
       where: {
@@ -141,30 +177,30 @@ export class PostService {
       throw new NotFoundException('Post not found or not authorized');
     }
 
-    return;
+    return sendResponsive(null, 'Post updated successfully');
   }
-
   async deletePost(postId: string, userId: string) {
     return this.prisma.$transaction(async (prisma) => {
-      const deletedPost = await prisma.post.deleteMany({
-        where: {
-          id: postId,
-          userId,
-        },
+      const post = await prisma.post.deleteMany({
+        where: { id: postId, userId },
       });
 
-      if (deletedPost.count === 0) {
+      if (post.count === 0) {
         throw new NotFoundException('Post not found or not authorized');
       }
 
       await prisma.user.update({
-        where: { id: userId },
+        where: {
+          id: userId,
+        },
         data: {
-          postCounts: { decrement: 1 },
+          postCounts: {
+            decrement: 1,
+          },
         },
       });
 
-      return { message: 'Post deleted successfully' };
+      return sendResponsive(null, 'Post deleted successfully');
     });
   }
 }
