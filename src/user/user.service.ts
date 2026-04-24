@@ -55,7 +55,6 @@ export class UsersService {
       throw new NotFoundException('User not found');
 
     let isFollowed = false;
-
     if (currentUserId) {
       const follow = await this.prisma.follower.findUnique({
         where: {
@@ -70,6 +69,7 @@ export class UsersService {
       isFollowed = !!follow;
     }
 
+    if (!user?.id) throw new NotFoundException('User Not Found');
     return sendResponsive(
       {
         ...user,
@@ -130,7 +130,6 @@ export class UsersService {
 
     const users = await this.prisma.user.findMany({
       where: baseWhere,
-
       select: {
         id: true,
         name: true,
@@ -158,12 +157,12 @@ export class UsersService {
               }
             : undefined,
       },
-
       skip,
       take: limit,
     });
 
-    return users;
+    if (users.length === 0) throw new NotFoundException('Users Not Found');
+    return sendResponsive(users, 'Get All Users successfully');
   }
 
   async updateUser(
@@ -174,76 +173,38 @@ export class UsersService {
     extraProfileData: ExtraProfileDataType,
   ) {
     return this.prisma.$transaction(async (prisma) => {
-      const user = await prisma.user.findUnique({
-        where: { id },
-        select: { id: true, role: true },
-      });
-
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-
-      if (role !== user.role) {
-        throw new ForbiddenException("You can't change user role");
-      }
-
       const updatedUser = await prisma.user.update({
         where: { id },
         data: userData,
+        select: { id: true },
       });
 
       let profileUpdateResult: any = null;
       let extraUpdateResult: any = null;
 
-      if (role === TEACHER) {
-        profileUpdateResult = await prisma.profileTeacher.update({
+      if (roleTeacherAndCenterSet.has(role)) {
+        extraUpdateResult = await prisma[this.toUpperCase(role)].update({
           where: { userId: id },
-          data: profileData as any,
+          data: extraProfileData as any,
+          select: { id: true },
         });
       }
 
-      if (role === 'center') {
-        profileUpdateResult = await prisma.profileCenter.update({
-          where: { userId: id },
-          data: profileData as any,
-        });
+      profileUpdateResult = await prisma[role].update({
+        where: { userId: id },
+        data: profileData as any,
+        select: { id: true },
+      });
 
-        extraUpdateResult = await prisma.profileCenter.update({
-          where: { userId: id },
-          data: extraProfileData,
-        });
-      }
-
-      if (role === 'student') {
-        profileUpdateResult = await prisma.student.update({
-          where: { userId: id },
-          data: profileData as any,
-        });
-      }
-
-      return sendResponsive(
-        {
-          updatedUser,
-          profileUpdateResult,
-          extraUpdateResult,
-        },
-        'User retrieved successfully',
-      );
+      return sendResponsive(null, 'User updated successfully');
     });
   }
 
   async deleteUser(id: string) {
-    return await this.prisma.$transaction(async (prisma) => {
-      const user = await prisma.user.findUnique({
-        where: { id },
-        select: { id: true },
-      });
-
-      if (!user) throw new NotFoundException('User not found');
-
-      await prisma.user.delete({
-        where: { id },
-      });
+    await this.prisma.user.delete({
+      where: { id },
     });
+
+    return sendResponsive(null, 'User deleted successfully');
   }
 }

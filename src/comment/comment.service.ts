@@ -30,26 +30,32 @@ export class CommentService {
 
     return sendResponsive(
       {
-        data: comments,
+        postId,
         nextCursor:
           comments.length === limit ? comments[comments.length - 1].id : null,
+        data: comments,
       },
       'Comments retrieved successfully',
     );
   }
 
   async createComment(userId: string, postId: string, content: string) {
-    return this.prisma.$transaction(async (prisma) => {
+    return await this.prisma.$transaction(async (prisma) => {
+      const post = await prisma.post.findUnique({
+        where: { id_userId: { id: postId, userId } },
+        select: { id: true },
+      });
+
+      if (!post) throw new NotFoundException('Post not found');
+
       const comment = await prisma.comment.create({
         data: { userId, postId, content },
       });
 
-      if (!comment) {
-        throw new NotFoundException('Post not found');
-      }
+      if (!comment) throw new NotFoundException('Post not found');
 
-      await prisma.post.updateMany({
-        where: { id: postId },
+      await prisma.post.update({
+        where: { id_userId: { id: postId, userId } },
         data: {
           commentCounts: { increment: 1 },
         },
@@ -58,40 +64,49 @@ export class CommentService {
       return sendResponsive(comment, 'Comment created successfully');
     });
   }
-  async updateComment(userId: string, commentId: string, content: string) {
-    const result = await this.prisma.comment.updateMany({
+  async updateComment(
+    userId: string,
+    commentId: string,
+    postId: string,
+    content: string,
+  ) {
+    await this.prisma.comment.update({
       where: {
-        id: commentId,
-        userId,
+        id_userId_postId: {
+          id: commentId,
+          userId,
+          postId,
+        },
       },
       data: {
         content,
       },
     });
 
-    if (result.count === 0) {
-      throw new NotFoundException('Comment not found');
-    }
-
     return sendResponsive(null, 'Comment updated successfully');
   }
 
   async deleteComment(userId: string, commentId: string, postId: string) {
-    return this.prisma.$transaction(async (prisma) => {
-      const commentDeleted = await prisma.comment.deleteMany({
-        where: { id: commentId, userId },
-      });
-
-      if (commentDeleted.count === 0) {
-        throw new NotFoundException('Comment not found or not allowed');
-      }
-
-      await prisma.post.update({
-        where: { id: postId },
-        data: {
-          commentCounts: { decrement: 1 },
-        },
-      });
+    return await this.prisma.$transaction(async (prisma) => {
+      await Promise.all([
+        prisma.comment.delete({
+          where: {
+            id_userId_postId: {
+              id: commentId,
+              userId,
+              postId,
+            },
+          },
+        }),
+        prisma.post.update({
+          where: { id_userId: { id: postId, userId } },
+          data: {
+            commentCounts: {
+              decrement: 1,
+            },
+          },
+        }),
+      ]);
 
       return sendResponsive(null, 'Comment deleted successfully');
     });

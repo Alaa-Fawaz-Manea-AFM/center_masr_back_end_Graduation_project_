@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CENTER, STUDENT, TEACHER } from './constant';
-import { UpdateUserDto } from 'src/user/dto/update-user.dto';
+import { UpdateUserDto } from 'src/user/dto/updateUser.dto';
 import {
   ExtraProfileDataType,
   ProfileDataType,
@@ -31,53 +31,53 @@ export class ProfileService {
       educationalQualification,
     } = data;
 
-    const userData: UserDataType = {
+    const userData = this.removeNullish({
       name,
       imageUrl,
       phone,
       address,
-    };
+    }) as UserDataType;
 
     let extraProfileData: ExtraProfileDataType = {};
     let profileData: ProfileDataType = {};
 
     if (role === TEACHER) {
-      profileData = {
+      profileData = this.removeNullish({
         classRooms,
         studySystem,
         studyMaterial,
-      };
+      });
 
-      extraProfileData = {
+      extraProfileData = this.removeNullish({
         bio,
         whatsApp,
         sharePrice,
         experienceYear,
         educationalQualification,
-      };
+      });
     }
 
     if (role === STUDENT) {
-      profileData = {
+      profileData = this.removeNullish({
         classRoom,
         educationalStage,
-      };
+      });
     }
 
     if (role === CENTER) {
-      profileData = {
+      profileData = this.removeNullish({
         studySystem,
         governorate,
         educationalStage,
-      };
+      });
 
-      extraProfileData = {
+      extraProfileData = this.removeNullish({
         bio,
         whatsApp,
         studyMaterials,
         contactUsPhone,
         contactUsEmail,
-      };
+      });
     }
 
     return {
@@ -87,19 +87,17 @@ export class ProfileService {
     };
   }
 
-  private removeEmptyObjects(dto: any) {
-    return Object.fromEntries(
-      Object.entries(dto).filter(([_, value]) => {
-        if (value === undefined) return false;
-        if (
-          typeof value === 'object' &&
-          value !== null &&
-          Object.keys(value).length === 0
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    );
+  removeNullish<T extends Record<string, any>>(obj: T): Partial<T> {
+    const cleaned: Partial<T> = {};
+
+    for (const key in obj) {
+      const value = obj[key];
+
+      if (value !== null && value !== undefined && value !== '') {
+        cleaned[key] = value;
+      }
+    }
+
+    return cleaned;
   }
 }

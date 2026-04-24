@@ -1,4 +1,9 @@
-const [body, params, query]: string[] = ['body', 'params', 'query'];
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 const studyMaterialArray: string[] = [
   'science',
@@ -61,23 +66,49 @@ const educationalStageArray: string[] = [
   'secondary',
   'university',
 ];
-
 const roleArray: string[] = [STUDENT, TEACHER, CENTER, ADMIN];
+
 const roleSet: Set<string> = new Set(roleArray);
+const classRoomSet = new Set(classRoomArray);
+const studyMaterialSet = new Set(studyMaterialArray);
+const educationalStageSet = new Set(educationalStageArray);
+const daySet = new Set(weekDays);
+const studySystemSet = new Set(['arabic', 'english']);
+
+const [BadRequest, Unauthorized, Forbidden, NotFound] = [
+  'BadRequest',
+  'Unauthorized',
+  'Forbidden',
+  'NotFound',
+];
+
+const ErrorException = {
+  BadRequest: BadRequestException,
+  Unauthorized: UnauthorizedException,
+  Forbidden: ForbiddenException,
+  NotFound: NotFoundException,
+};
 
 export {
-  body,
   ADMIN,
-  query,
   Roles,
+  daySet,
   CENTER,
-  params,
   roleSet,
   TEACHER,
+  classRoomSet,
+  studySystemSet,
+  educationalStageSet,
+  studyMaterialSet,
   STUDENT,
   roleArray,
   roleTeacherAndCenter,
   weekDays,
+  BadRequest,
+  Unauthorized,
+  ErrorException,
+  Forbidden,
+  NotFound,
   classRoomArray,
   studyMaterialArray,
   educationalStageArray,

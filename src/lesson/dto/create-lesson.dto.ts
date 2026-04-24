@@ -4,7 +4,6 @@ import {
   MaxLength,
   Matches,
   IsOptional,
-  IsUUID,
 } from 'class-validator';
 
 const videoUrlRegex =
@@ -23,9 +22,6 @@ export class CreateLessonDto {
 
   @IsOptional()
   @IsString()
-  @Matches(videoUrlRegex, {
-    message:
-      'vedioUrl must be a valid https URL ending with .mp4, .mov, .avi, or .webm',
-  })
+  @Matches(videoUrlRegex)
   videoUrl?: string;
 }

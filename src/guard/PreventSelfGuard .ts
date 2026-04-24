@@ -16,9 +16,8 @@ export class PreventSelfGuard implements CanActivate {
 
     if (!userId || !targetId) return true;
 
-    if (targetId === userId) {
+    if (targetId === userId)
       throw new ForbiddenException("You can't perform this on yourSelf");
-    }
 
     return true;
   }

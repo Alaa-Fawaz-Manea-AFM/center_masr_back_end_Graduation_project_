@@ -55,7 +55,8 @@ model User {
 }
 
 model Teacher {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
+
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -72,13 +73,16 @@ model Teacher {
   course      Course[]
   lesson      Lesson[]
   note        Note[]
-  homework    Homework[]
   exam        Exam[]
+  homework    Homework[]
   teacherDays TeacherDay[]
+
+  @@index([classRoom, studyMaterial, studySystem])
 }
 
 model Student {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
+
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -87,13 +91,15 @@ model Student {
 
   bookingWeekly BookedWeekly[]
   bookingLesson BookedLesson[]
+
+  @@index([classRoom, educationalStage])
 }
 
 model ProfileTeacher {
   id String @id @default(uuid())
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   bio                      String?
   star                     Float    @default(0)
@@ -105,7 +111,8 @@ model ProfileTeacher {
 }
 
 model Center {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
+
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -113,28 +120,44 @@ model Center {
   educationalStage String[]
   studySystem      String[]
 
-  schedules WeeklySchedule[]
+  schedules  WeeklySchedule[]
+  teacherDay TeacherDay[]
 }
 
 model ProfileCenter {
   id String @id @default(uuid())
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   bio            String?
   whatsApp       String?
   contactUsPhone String[]
   contactUsEmail String[]
-  studyMaterial  String[]
+  studyMaterials String[]
 }
 
 model RefreshToken {
-  id     String @id @default(uuid())
+  id String @id @default(uuid())
+
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   token String
+}
+
+model Review {
+  id String @id @default(uuid())
+
+  rate          Int    @default(0)
+  ownerReviewId String
+  userReviewId  String
+
+  review    User @relation("reviews", fields: [ownerReviewId], references: [id], onDelete: Cascade)
+  reviewing User @relation("reviewing", fields: [userReviewId], references: [id], onDelete: Cascade)
+
+  @@index([ownerReviewId])
+  @@index([userReviewId])
 }
 
 model Course {
@@ -158,8 +181,9 @@ model Course {
 
   createdAt DateTime @default(now())
 
+  @@unique([id, teacherId])
   @@unique([studyMaterial, classRoom, teacherId])
-  @@index([teacherId, studyMaterial, classRoom])
+  @@index([teacherId, classRoom])
 }
 
 model Lesson {
@@ -182,21 +206,8 @@ model Lesson {
 
   createdAt DateTime @default(now())
 
-  @@index([teacherId, courseId])
-}
-
-model Review {
-  id String @id @default(uuid())
-
-  rate          Int    @default(0)
-  ownerReviewId String
-  userReviewId  String
-
-  review    User @relation("reviews", fields: [ownerReviewId], references: [id], onDelete: Cascade)
-  reviewing User @relation("reviewing", fields: [userReviewId], references: [id], onDelete: Cascade)
-
-  @@index([ownerReviewId])
-  @@index([userReviewId])
+  @@unique([id, teacherId])
+  @@index([courseId, title])
 }
 
 model BookedLesson {
@@ -228,8 +239,8 @@ model Note {
 
   createdAt DateTime @default(now())
 
-  @@unique([lessonId])
-  @@index([lessonId])
+  @@unique([id, teacherId])
+  @@unique([teacherId, lessonId, courseId])
   @@index([courseId])
 }
 
@@ -249,8 +260,8 @@ model Homework {
 
   createdAt DateTime @default(now())
 
-  @@unique([lessonId])
-  @@index([lessonId])
+  @@unique([id, teacherId])
+  @@unique([teacherId, lessonId, courseId])
   @@index([courseId])
 }
 
@@ -270,20 +281,21 @@ model Exam {
 
   createdAt DateTime @default(now())
 
-  @@unique([lessonId])
-  @@index([lessonId])
+  @@unique([id, teacherId])
+  @@unique([teacherId, lessonId, courseId])
   @@index([courseId])
 }
 
 model WeeklySchedule {
-  id       String @id @default(uuid())
+  id String @id @default(uuid())
+
   centerId String
   center   Center @relation(fields: [centerId], references: [id], onDelete: Cascade)
 
-  classRoom String
-
+  classRoom   String
   teacherDays TeacherDay[]
 
+  @@unique([id, centerId])
   @@unique([centerId, classRoom])
 }
 
@@ -292,16 +304,18 @@ model TeacherDay {
   teacherId String
   teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 
-  weekly_scheduleId String
-  weekly_schedule   WeeklySchedule @relation(fields: [weekly_scheduleId], references: [id], onDelete: Cascade)
+  weeklyScheduleId String
+  weeklySchedule   WeeklySchedule @relation(fields: [weeklyScheduleId], references: [id], onDelete: Cascade)
 
   time          String
   day           String
   studyMaterial String
 
-  BookedWeekly BookedWeekly[]
+  bookedWeekly BookedWeekly[]
+  center       Center?        @relation(fields: [centerId], references: [id])
+  centerId     String?
 
-  @@unique([teacherId, weekly_scheduleId, day, time])
+  @@unique([teacherId, weeklyScheduleId, day, time])
 }
 
 model BookedWeekly {
@@ -314,6 +328,7 @@ model BookedWeekly {
   teacherDay TeacherDay @relation(fields: [teacherDayId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, teacherDayId])
+  @@index([studentId, teacherDayId])
 }
 
 model Post {
@@ -334,6 +349,7 @@ model Post {
 
   createdAt DateTime @default(now())
 
+  @@unique([id, userId])
   @@index([userId, role])
 }
 
@@ -359,6 +375,9 @@ model Comment {
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+
+  @@unique([id, userId, postId])
+  @@index([userId, postId])
 }
 
 model Follower {
@@ -370,6 +389,5 @@ model Follower {
   follower  User @relation("followers", fields: [followerId], references: [id], onDelete: Cascade)
 
   @@unique([followingId, followerId])
-  @@index([followingId])
-  @@index([followerId])
+  @@index([followingId, followerId])
 }

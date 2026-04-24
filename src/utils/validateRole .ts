@@ -1,6 +1,8 @@
-import { IfAppError, roleSet } from "../utils/index.js";
+import { BadRequestException } from '@nestjs/common';
+import { roleSet } from '../utils/index.js';
 
-const validateRole = (role) =>
-  IfAppError(roleSet.has(role), `Invalid role: ${role}`, 403);
+const validateRole = (role) => {
+  if (roleSet.has(role)) throw new BadRequestException(`Invalid role: ${role}`);
+};
 
 export default validateRole;

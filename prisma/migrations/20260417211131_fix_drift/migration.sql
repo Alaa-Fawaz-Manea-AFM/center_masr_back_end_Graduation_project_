@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE "Course" ADD COLUMN     "examCounts" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "noteCounts" INTEGER NOT NULL DEFAULT 0;

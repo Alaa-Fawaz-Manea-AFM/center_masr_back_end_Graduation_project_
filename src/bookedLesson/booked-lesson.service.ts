@@ -36,9 +36,8 @@ export class BookedLessonService {
           };
         }
 
-        if (error.code === 'P2003') {
+        if (error.code === 'P2003')
           throw new NotFoundException('Lesson not found');
-        }
 
         throw error;
       }

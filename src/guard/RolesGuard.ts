@@ -16,18 +16,15 @@ export class RolesGuard implements CanActivate {
       role_Decorator,
       context.getHandler(),
     );
-    if (!requiredRoles || requiredRoles.length === 0) {
-      return true;
-    }
+    if (!requiredRoles || requiredRoles.length === 0) return true;
 
     const request = context.switchToHttp().getRequest();
     const userRole = request.user?.role;
 
-    if (!userRole || !requiredRoles.includes(userRole)) {
+    if (!userRole || !requiredRoles.includes(userRole))
       throw new ForbiddenException(
         'You are not authorized to perform this action',
       );
-    }
 
     return true;
   }

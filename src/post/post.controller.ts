@@ -9,14 +9,15 @@ import {
   Query,
   Req,
   ParseUUIDPipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { PostService } from './post.service';
-import GetAllPostsDto from './dto/get-All-posts.dto';
-import QueryDto from 'src/validators/query';
+import GetAllPostsDto from './dto/getAllPosts.dto';
+import QueryDto from 'src/validators/query.dto';
 import { RequestType } from 'src/types/type';
-import { CreatePostDto } from './dto/create-post.dto';
+import { CreatePostDto } from './dto/createPost.dto';
 import { CENTER, TEACHER } from 'src/utils';
-import { UpdatePostDto } from './dto/update-post.dto';
+import { UpdatePostDto } from './dto/updatePost.dto';
 import RolesDecorator from 'src/decorator/roles.decorator';
 
 @Controller('posts')
@@ -26,13 +27,12 @@ export class PostController {
   @Get()
   getAllPosts(
     @Body() getAllPostsDto: GetAllPostsDto,
-    @Query() queryDto: QueryDto,
+    @Query('page', ParseIntPipe) page: number,
     @Req() req,
   ) {
-    const { page = 10 } = queryDto;
     const { userId } = req.user as RequestType;
 
-    return this.postService.getAllPosts(getAllPostsDto, userId, +page);
+    return this.postService.getAllPosts(getAllPostsDto, userId, page);
   }
 
   @Get(':postId')

@@ -2,10 +2,121 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateHomeWorkDto } from './dto/create-home-work.dto';
 import { PrismaService } from 'src/prisma.service';
 import { sendResponsive } from 'src/utils';
+import { GetAllLessonDto } from 'src/lesson/dto/getAllLessonDto';
 
 @Injectable()
 export class HomeWorkService {
   constructor(private prisma: PrismaService) {}
+
+  async findOne(homeWorkId: string, currentUserId: string) {
+    const homeWork = await this.prisma.homework.findUnique({
+      where: { id: homeWorkId },
+      select: {
+        id: true,
+        fileUrl: true,
+        lessonId: true,
+        teacherId: true,
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+            bookingLesson: {
+              where: {
+                studentId: currentUserId,
+              },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!homeWork) throw new NotFoundException('Home work not found');
+
+    const {
+      lesson: { bookingLesson, title },
+      id,
+      fileUrl,
+      teacherId,
+    } = homeWork;
+
+    let isBooked = teacherId === currentUserId || bookingLesson.length > 0;
+
+    if (!isBooked)
+      throw new NotFoundException('Exam not found or not authorized');
+
+    return sendResponsive(
+      {
+        id,
+        title,
+        fileUrl,
+      },
+      'Get Home Work successfully',
+    );
+  }
+
+  async findAll(
+    courseId: string,
+    currentUserId: string,
+    getAllHomeWorkDto: GetAllLessonDto,
+  ) {
+    const whereHomeWork = getAllHomeWorkDto.title
+      ? {
+          ...(getAllHomeWorkDto.title && {
+            title: {
+              contains: getAllHomeWorkDto.title,
+              mode: 'insensitive',
+            },
+          }),
+        }
+      : {};
+
+    const homeWorks = await this.prisma.homework.findMany({
+      where: { courseId, ...whereHomeWork },
+      select: {
+        id: true,
+        lessonId: true,
+        teacherId: true,
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+            bookingLesson: {
+              where: {
+                studentId: currentUserId,
+              },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!homeWorks.length) throw new NotFoundException('Home Works not found');
+
+    return sendResponsive(
+      {
+        courseId,
+        data: homeWorks.map((homeWork) => {
+          let isBooked =
+            homeWork.teacherId === currentUserId ||
+            homeWork.lesson.bookingLesson.length > 0;
+
+          return {
+            id: homeWork.id,
+            lesson: {
+              id: homeWork.lesson.id,
+              title: homeWork.lesson.title,
+            },
+            isBooked,
+          };
+        }),
+      },
+      'Home work created successfully',
+    );
+  }
 
   async create(
     courseId: string,
@@ -14,195 +125,84 @@ export class HomeWorkService {
     createHomeWorkDto: CreateHomeWorkDto,
   ) {
     return this.prisma.$transaction(async (prisma) => {
-      const course = await prisma.course.findFirst({
-        where: {
-          id: courseId,
-          teacherId,
-        },
-        select: { id: true },
-      });
-
-      if (!course) {
-        throw new NotFoundException('Course not found or not authorized');
-      }
-
-      const homeWork = await prisma.homework.create({
-        data: {
-          ...createHomeWorkDto,
-          courseId,
-          lessonId,
-          teacherId,
+      const lesson = await prisma.lesson.findUnique({
+        where: { id_teacherId: { id: lessonId, teacherId } },
+        select: {
+          id: true,
         },
       });
 
-      if (!homeWork) {
-        throw new NotFoundException('Hom Work error created ');
-      }
-      await prisma.course.updateMany({
-        where: {
-          id: courseId,
-          teacherId,
-          homeworkCounts: {
-            gt: 0,
+      if (!lesson)
+        throw new NotFoundException('Lesson not found or not authorized');
+
+      const [homeWork] = await Promise.all([
+        prisma.homework.create({
+          data: {
+            ...createHomeWorkDto,
+            courseId,
+            lessonId,
+            teacherId,
           },
-        },
-        data: {
-          homeworkCounts: {
-            increment: 1,
+        }),
+
+        prisma.course.update({
+          where: {
+            id_teacherId: {
+              id: courseId,
+              teacherId,
+            },
           },
-        },
-      });
+          data: {
+            homeworkCounts: {
+              increment: 1,
+            },
+          },
+        }),
+      ]);
 
       return sendResponsive(homeWork, 'Home work created successfully');
     });
   }
 
-  async findAll(courseId: string, studentId: string) {
-    const homeWorks = await this.prisma.homework.findMany({
-      where: { courseId },
-      select: {
-        id: true,
-        fileUrl: true,
-        lessonId: true,
-        lesson: {
-          select: {
-            id: true,
-            title: true,
-            _count: {
-              select: {
-                bookingLesson: {
-                  where: {
-                    studentId,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!homeWorks.length) {
-      throw new NotFoundException('Home Works not found');
-    }
-
-    const lessonIds = [...new Set(homeWorks.map((h) => h.lessonId))];
-
-    const bookings = await this.prisma.bookedLesson.findMany({
-      where: {
-        studentId,
-        lessonId: { in: lessonIds },
-      },
-      select: {
-        lessonId: true,
-      },
-    });
-
-    const accessSet = new Set(bookings.map((b) => b.lessonId));
-
-    const data = homeWorks.map((homeWork) => {
-      const hasAccess = accessSet.has(homeWork.lessonId);
-
-      return {
-        id: homeWork.id,
-        lessonId: homeWork.lessonId,
-        lesson: homeWork.lesson,
-        fileUrl: hasAccess ? homeWork.fileUrl : null,
-        isBooked: hasAccess,
-      };
-    });
-
-    return sendResponsive(data, 'Home work created successfully');
-  }
-  async findOne(homeWorkId: string, currentUserId: string) {
-    const [homeWork, booking] = await Promise.all([
-      this.prisma.homework.findUnique({
-        where: { id: homeWorkId },
-        select: {
-          id: true,
-          fileUrl: true,
-          lessonId: true,
-          lesson: {
-            select: {
-              id: true,
-              title: true,
-            },
-          },
-        },
-      }),
-
-      this.prisma.bookedLesson.findUnique({
-        where: {
-          studentId_lessonId: {
-            studentId: currentUserId,
-            lessonId: homeWorkId,
-          },
-        },
-        select: { id: true },
-      }),
-    ]);
-
-    if (!homeWork) {
-      throw new NotFoundException('Home work not found');
-    }
-
-    const isBooked = !!booking;
-
-    return sendResponsive(
-      {
-        ...homeWork,
-        isBooked,
-        fileUrl: isBooked ? homeWork.fileUrl : null,
-      },
-      'Get Home Work successfully',
-    );
-  }
   async update(
     homeWorkId: string,
     teacherId: string,
     updateHomeWorkDto: CreateHomeWorkDto,
   ) {
-    const result = await this.prisma.homework.updateMany({
+    await this.prisma.homework.update({
       where: {
-        id: homeWorkId,
-        teacherId,
+        id_teacherId: {
+          id: homeWorkId,
+          teacherId,
+        },
       },
       data: updateHomeWorkDto,
     });
-
-    if (result.count === 0) {
-      throw new NotFoundException('Home work not found or not authorized');
-    }
 
     return sendResponsive(null, 'Home Work updated successfully');
   }
   async remove(homeWorkId: string, courseId: string, teacherId: string) {
     return this.prisma.$transaction(async (prisma) => {
-      const homework = await prisma.homework.deleteMany({
-        where: {
-          id: homeWorkId,
-          teacherId,
-        },
-      });
-
-      if (homework.count === 0) {
-        throw new NotFoundException('Homework not found or not authorized');
-      }
-
-      await prisma.course.update({
-        where: {
-          id: courseId,
-
-          homeworkCounts: {
-            gt: 0,
+      await Promise.all([
+        prisma.homework.delete({
+          where: {
+            id_teacherId: {
+              id: homeWorkId,
+              teacherId,
+            },
           },
-        },
-        data: {
-          homeworkCounts: {
-            decrement: 1,
+        }),
+        prisma.course.update({
+          where: {
+            id_teacherId: { id: courseId, teacherId },
           },
-        },
-      });
+          data: {
+            homeworkCounts: {
+              decrement: 1,
+            },
+          },
+        }),
+      ]);
 
       return sendResponsive(null, 'Homework deleted successfully');
     });

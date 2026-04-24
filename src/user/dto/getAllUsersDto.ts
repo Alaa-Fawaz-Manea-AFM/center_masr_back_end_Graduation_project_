@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { RoleTeacherAndCenterDto } from 'src/validators/rolesDto';
+import { RoleTeacherAndCenterDto } from 'src/validators/roles.dto';
 
 export class GetAllUsersDto {
   @IsEnum(RoleTeacherAndCenterDto)

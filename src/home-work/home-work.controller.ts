@@ -12,11 +12,33 @@ import {
 } from '@nestjs/common';
 import { HomeWorkService } from './home-work.service';
 import { CreateHomeWorkDto } from './dto/create-home-work.dto';
+import { GetAllLessonDto } from 'src/lesson/dto/getAllLessonDto';
+import RolesDecorator from 'src/decorator/roles.decorator';
+import { TEACHER } from 'src/utils';
 
 @Controller('home-works')
 export class HomeWorkController {
   constructor(private readonly homeWorkService: HomeWorkService) {}
 
+  @Get()
+  findAll(
+    @Query('courseId', ParseUUIDPipe) courseId,
+    @Body() getAllHomeWorkDto: GetAllLessonDto,
+    @Req() req,
+  ) {
+    return this.homeWorkService.findAll(
+      courseId,
+      req.user.profileId,
+      getAllHomeWorkDto,
+    );
+  }
+
+  @Get(':homeWorkId')
+  findOne(@Param('homeWorkId', ParseUUIDPipe) homeWorkId: string, @Req() req) {
+    return this.homeWorkService.findOne(homeWorkId, req.user.profileId);
+  }
+
+  @RolesDecorator(TEACHER)
   @Post(':lessonId')
   create(
     @Param('lessonId', ParseUUIDPipe) lessonId: string,
@@ -32,16 +54,7 @@ export class HomeWorkController {
     );
   }
 
-  @Get()
-  findAll(@Query('courseId', ParseUUIDPipe) courseId, @Req() req) {
-    return this.homeWorkService.findAll(courseId, req.user.profileId);
-  }
-
-  @Get(':homeWorkId')
-  findOne(@Param('homeWorkId', ParseUUIDPipe) homeWorkId: string, @Req() req) {
-    return this.homeWorkService.findOne(homeWorkId, req.user.profileId);
-  }
-
+  @RolesDecorator(TEACHER)
   @Patch(':homeWorkId')
   update(
     @Param('homeWorkId', ParseUUIDPipe) homeWorkId: string,
@@ -55,6 +68,7 @@ export class HomeWorkController {
     );
   }
 
+  @RolesDecorator(TEACHER)
   @Delete(':homeWorkId')
   remove(
     @Param('homeWorkId', ParseUUIDPipe) homeWorkId: string,

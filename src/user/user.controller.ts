@@ -6,18 +6,17 @@ import {
   Param,
   Body,
   Query,
-  UseGuards,
   Req,
   ParseUUIDPipe,
+  ParseEnumPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './user.service';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { sendResponsive } from 'src/utils';
 import { GetAllUsersDto } from './dto/getAllUsersDto';
-import QueryDto from 'src/validators/query';
 import { ProfileService } from 'src/utils/methods_handler';
-import { AuthGuard } from 'src/guard/authGuard';
-import { RoleTeacherAndCenterDto } from 'src/validators/rolesDto';
+import { RoleTeacherAndCenterDto } from 'src/validators/roles.dto';
+import QueryPageDto from 'src/validators/queryPageDto';
+import { UpdateUserDto } from './dto/updateUser.dto';
 
 @Controller('users')
 export class UsersController {
@@ -30,33 +29,31 @@ export class UsersController {
   @Get()
   getAllUsers(
     @Body() getAllUsersDto: GetAllUsersDto,
-    @Query() queryDto: QueryDto,
+    @Query() queryPageDto: QueryPageDto,
   ) {
-    const { page = 1, limit = 6 } = queryDto;
-
-    return this.usersService.getAllUsers(getAllUsersDto, +page, +limit);
+    return this.usersService.getAllUsers(getAllUsersDto, queryPageDto.page);
   }
 
   @Get(':id')
   getUser(
     @Param('id', ParseUUIDPipe) targetUserId: string,
-    @Body('role') role: RoleTeacherAndCenterDto,
+    @Query('role', new ParseEnumPipe(RoleTeacherAndCenterDto))
+    role: string,
     @Req() req,
   ) {
     return this.usersService.getUserById(targetUserId, role, req?.user?.userId);
   }
 
-  @Patch(':userId')
-  updateUser(
-    @Param('userId', ParseUUIDPipe) userId: string,
-    @Body() updateUserDto: UpdateUserDto,
-  ) {
-    const { userData, profileData, extraProfileData } =
-      this.ProfileService.buildProfileData(updateUserDto.role, updateUserDto);
+  @Patch('')
+  updateUser(@Body() updateUserDto: UpdateUserDto, @Req() req) {
+    if (req.user.role !== updateUserDto.role)
+      throw new BadRequestException('You can not change your role');
 
+    const { userData, profileData, extraProfileData } =
+      this.ProfileService.buildProfileData(req.user.role, updateUserDto);
     return this.usersService.updateUser(
-      userId,
-      updateUserDto.role,
+      req.user.userId,
+      updateUserDto.role!,
       userData,
       profileData,
       extraProfileData,
@@ -64,7 +61,7 @@ export class UsersController {
   }
 
   @Delete(':userId')
-  deleteUser(@Param('userId', ParseUUIDPipe) userId: string) {
-    return this.usersService.deleteUser(userId);
+  deleteUser(@Param('userId', ParseUUIDPipe) userId: string, @Req() req) {
+    return this.usersService.deleteUser(req.user.userId);
   }
 }

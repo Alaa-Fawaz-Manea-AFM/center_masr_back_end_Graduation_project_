@@ -2,10 +2,6 @@ import { IsArray, IsOptional, IsString, Matches } from 'class-validator';
 
 export class CenterDto {
   @IsOptional()
-  @Matches(/^01[0-9]{9}$/)
-  whatsApp?: string;
-
-  @IsOptional()
   @IsString()
   bio?: string;
 

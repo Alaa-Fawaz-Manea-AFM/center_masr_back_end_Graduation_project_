@@ -15,6 +15,9 @@ import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { LessonService } from './lesson.service';
 import RolesDecorator from 'src/decorator/roles.decorator';
+import { GetAllLessonDto } from './dto/getAllLessonDto';
+import QueryDto from 'src/validators/query.dto';
+import { TEACHER } from 'src/utils';
 
 @Controller('lessons')
 export class LessonController {
@@ -27,14 +30,18 @@ export class LessonController {
 
   @Get()
   getAllLessons(
-    @Query('page', ParseIntPipe) page: number,
-    @Query('courseId', ParseUUIDPipe) courseId: string,
+    @Query() queryDto: QueryDto,
+    @Body() getAllLessonsDto: GetAllLessonDto,
     @Req() req,
   ) {
-    return this.lessonService.getAllLessons(page, req.user.profileId, courseId);
+    return this.lessonService.getAllLessons(
+      queryDto,
+      req.user.profileId,
+      getAllLessonsDto,
+    );
   }
 
-  @RolesDecorator('teacher')
+  @RolesDecorator(TEACHER)
   @Post(':courseId')
   createLesson(
     @Param('courseId', ParseUUIDPipe) courseId: string,
@@ -48,7 +55,7 @@ export class LessonController {
     );
   }
 
-  @RolesDecorator('teacher')
+  @RolesDecorator(TEACHER)
   @Patch(':lessonId')
   updateLesson(
     @Param('lessonId', ParseUUIDPipe) lessonId: string,
@@ -62,7 +69,7 @@ export class LessonController {
     );
   }
 
-  @RolesDecorator('teacher')
+  @RolesDecorator(TEACHER)
   @Delete(':lessonId')
   deleteLesson(
     @Param('lessonId', ParseUUIDPipe) lessonId: string,

@@ -1,106 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  MethodNotAllowedException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { PrismaService } from 'src/prisma.service';
 import { sendResponsive } from 'src/utils';
+import { GetAllLessonDto } from 'src/lesson/dto/getAllLessonDto';
+import QueryDto from 'src/validators/query.dto';
 
 @Injectable()
 export class NoteService {
   constructor(private prisma: PrismaService) {}
-  async create(
-    teacherId: string,
-    lessonId: string,
-    courseId: string,
-    createNoteDto: CreateNoteDto,
-  ) {
-    return this.prisma.$transaction(async (prisma) => {
-      const lesson = await prisma.lesson.findFirst({
-        where: {
-          id: lessonId,
-          courseId,
-          teacherId,
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (!lesson) {
-        throw new NotFoundException('Lesson not found');
-      }
-
-      const note = await prisma.note.create({
-        data: {
-          ...createNoteDto,
-          lessonId,
-          teacherId,
-          courseId,
-        },
-      });
-
-      if (!note) {
-        throw new NotFoundException('Note not created');
-      }
-
-      await prisma.course.update({
-        where: {
-          id: courseId,
-          noteCounts: {
-            gte: 0,
-          },
-        },
-        data: {
-          noteCounts: { increment: 1 },
-        },
-      });
-
-      return note;
-    });
-  }
-
-  async findAll(courseId: string, studentId: string) {
-    const notes = await this.prisma.note.findMany({
-      where: { courseId },
-      select: {
-        id: true,
-        fileUrl: true,
-        lessonId: true,
-        lesson: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
-      },
-    });
-
-    if (!notes.length) {
-      throw new NotFoundException('Notes not found');
-    }
-
-    const lessonIds = [...new Set(notes.map((n) => n.lessonId))];
-
-    const bookings = await this.prisma.bookedLesson.findMany({
-      where: {
-        studentId,
-        lessonId: { in: lessonIds },
-      },
-      select: {
-        lessonId: true,
-      },
-    });
-
-    const bookedSet = new Set(bookings.map((b) => b.lessonId));
-
-    return {
-      notes: notes.map((note) => ({
-        id: note.id,
-        lessonId: note.lessonId,
-        title: note.lesson.title,
-        fileUrl: bookedSet.has(note.lessonId) ? note.fileUrl : null,
-        isBooked: bookedSet.has(note.lessonId),
-      })),
-    };
-  }
 
   async findOne(noteId: string, currentUserId: string) {
     const note = await this.prisma.note.findUnique({
@@ -109,43 +20,161 @@ export class NoteService {
         id: true,
         fileUrl: true,
         lessonId: true,
+        teacherId: true,
         lesson: {
           select: {
             id: true,
             title: true,
+            bookingLesson: {
+              where: {
+                studentId: currentUserId,
+              },
+              select: { id: true },
+              take: 1,
+            },
           },
         },
       },
     });
 
-    if (!note) {
-      throw new NotFoundException('Note not found');
-    }
+    if (!note) throw new NotFoundException('Note not found');
 
-    let isBooked = false;
+    const {
+      lesson: { bookingLesson, title },
+      id,
+      fileUrl,
+      teacherId,
+    } = note;
 
-    if (currentUserId) {
-      const booking = await this.prisma.bookedLesson.findUnique({
-        where: {
-          studentId_lessonId: {
-            studentId: currentUserId,
-            lessonId: note.lessonId,
-          },
-        },
-        select: { id: true },
-      });
+    let isBooked = teacherId === currentUserId || bookingLesson.length > 0;
 
-      isBooked = !!booking;
-    }
+    if (!isBooked)
+      throw new NotFoundException('Note not found or not authorized');
 
     return sendResponsive(
       {
-        ...note,
-        fileUrl: isBooked ? note.fileUrl : null,
-        isBooked,
+        id,
+        fileUrl,
+        title,
       },
       'Note retrieved successfully',
     );
+  }
+
+  async findAll(queryDto: QueryDto, currentUserId: string, title?: string) {
+    const { id: courseId, page = 1 } = queryDto;
+
+    const limit = 6;
+    const skip = (page - 1) * limit;
+
+    const whereTitle = title
+      ? {
+          ...(title && {
+            title: {
+              contains: title,
+              mode: 'insensitive',
+            },
+          }),
+        }
+      : {};
+
+    const notes = await this.prisma.note.findMany({
+      where: { courseId, ...whereTitle },
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        lessonId: true,
+        teacherId: true,
+        lesson: {
+          select: {
+            id: true,
+            title: true,
+
+            bookingLesson: {
+              where: {
+                studentId: currentUserId,
+              },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!notes.length) throw new NotFoundException('Notes not found');
+
+    return sendResponsive(
+      {
+        meta: {
+          total: notes.length,
+          page,
+        },
+        courseId,
+        data: notes.map((note) => {
+          const isBooked =
+            note.teacherId === currentUserId ||
+            note.lesson.bookingLesson.length > 0;
+
+          return {
+            id: note.id,
+            lessonId: note.lessonId,
+            title: note.lesson.title,
+            isBooked,
+          };
+        }),
+      },
+      'Notes retrieved successfully',
+    );
+  }
+
+  async create(
+    teacherId: string,
+    lessonId: string,
+    courseId: string,
+    createNoteDto: CreateNoteDto,
+  ) {
+    return this.prisma.$transaction(async (prisma) => {
+      const lesson = await prisma.lesson.findUnique({
+        where: {
+          id_teacherId: {
+            id: lessonId,
+            teacherId,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!lesson?.id) throw new NotFoundException('Lesson Not Found');
+
+      const [note] = await Promise.all([
+        prisma.note.create({
+          data: {
+            ...createNoteDto,
+            lessonId,
+            teacherId,
+            courseId,
+          },
+        }),
+
+        prisma.course.update({
+          where: {
+            id_teacherId: {
+              id: courseId,
+              teacherId,
+            },
+          },
+          data: {
+            noteCounts: { increment: 1 },
+          },
+        }),
+      ]);
+
+      return sendResponsive(note, 'Note create successfully');
+    });
   }
 
   async update(
@@ -153,46 +182,41 @@ export class NoteService {
     teacherId: string,
     updateNoteDto: CreateNoteDto,
   ) {
-    const note = await this.prisma.note.updateMany({
+    await this.prisma.note.update({
       where: {
-        id: noteId,
-        teacherId,
+        id_teacherId: {
+          id: noteId,
+          teacherId,
+        },
       },
       data: updateNoteDto,
     });
-
-    if (note.count === 0) {
-      throw new NotFoundException('Note not found or not authorized');
-    }
 
     return sendResponsive(null, 'Note updated successfully');
   }
 
   async remove(noteId: string, teacherId: string, courseId: string) {
     return this.prisma.$transaction(async (prisma) => {
-      const note = await prisma.note.deleteMany({
-        where: {
-          id: noteId,
-          teacherId,
-        },
-      });
-      if (note.count === 0) {
-        throw new NotFoundException('Note not found or not authorized');
-      }
-
-      await prisma.course.update({
-        where: {
-          id: courseId,
-          noteCounts: {
-            gt: 0,
+      await Promise.all([
+        prisma.note.delete({
+          where: {
+            id_teacherId: {
+              id: noteId,
+              teacherId,
+            },
           },
-        },
-        data: {
-          noteCounts: {
-            decrement: 1,
+        }),
+        prisma.course.update({
+          where: {
+            id: courseId,
           },
-        },
-      });
+          data: {
+            noteCounts: {
+              decrement: 1,
+            },
+          },
+        }),
+      ]);
 
       return sendResponsive(null, 'Note deleted successfully');
     });

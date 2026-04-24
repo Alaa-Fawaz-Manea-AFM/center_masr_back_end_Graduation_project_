@@ -4,26 +4,21 @@ import {
   UnauthorizedException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
-import AppConfig from '../config/app.config';
-import {
-  IfAppError,
-  roleTeacherAndCenterSet,
-  sendResponsive,
-  STUDENT,
-} from 'src/utils';
-import { JwtService } from '@nestjs/jwt';
+import { roleTeacherAndCenterSet, sendResponsive, STUDENT } from 'src/utils';
 import SignUpAuthDto from './dto/sign-up-auth.dto';
 import SignInAuthDto from './dto/sign-in-auth.dto';
-import { compare, hash } from 'bcrypt';
 import { PayloadTokenType } from 'src/types/type';
+import { PrismaService } from '../prisma.service';
+import AppConfig from '../config/app.config';
+import { JwtService } from '@nestjs/jwt';
+import { compare, hash } from 'bcrypt';
 import { Response } from 'express';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
     private jwtService: JwtService,
+    private prisma: PrismaService,
     private config: AppConfig,
   ) {}
 
@@ -40,15 +35,15 @@ export class AuthService {
       where: { email },
     });
 
-    IfAppError(existingUser, 'Email already exists', 400);
+    if (existingUser) throw new BadRequestException('Email already in use');
 
-    return this.prisma.$transaction(async (prisma) => {
+    return await this.prisma.$transaction(async (prisma) => {
       const hashedPassword = await hash(signUpAuthDto.password, 10);
       const user = await prisma.user.create({
         data: { ...signUpAuthDto, password: hashedPassword },
       });
 
-      const userId = user?.id;
+      const userId = user.id;
       const data = { data: { userId } };
       let roleModel = await prisma[`${role}`].create(data);
 
@@ -86,6 +81,10 @@ export class AuthService {
           profileId: roleModel.id,
         },
         'Logged in successfully',
+        {
+          accessToken,
+          refreshToken,
+        },
       );
     });
   }
@@ -120,14 +119,10 @@ export class AuthService {
       },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    if (!user) throw new UnauthorizedException('Invalid credentials');
 
     const isMatch = await compare(password, user.password);
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
     let profileId = user[`${user.role}`]?.id;
     let { id: userId, role } = user;
@@ -162,6 +157,10 @@ export class AuthService {
         profileId,
       },
       'Logged in successfully',
+      {
+        accessToken,
+        refreshToken,
+      },
     );
   }
 
@@ -214,9 +213,8 @@ export class AuthService {
       omit: { userId: true },
     };
     include[role] = includeAndOmit;
-    if (roleTeacherAndCenterSet.has(role)) {
+    if (roleTeacherAndCenterSet.has(role))
       include[`profile_${role}`] = includeAndOmit;
-    }
 
     const omit =
       role === STUDENT
@@ -231,9 +229,7 @@ export class AuthService {
       omit: { updatedAt: true, email: true, password: true, ...omit },
     });
 
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
+    if (!user) throw new BadRequestException('User not found');
 
     return sendResponsive(user, 'User data successfully');
   }

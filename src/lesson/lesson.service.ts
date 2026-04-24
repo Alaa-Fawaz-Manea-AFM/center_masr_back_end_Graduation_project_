@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateLessonDto } from './dto/create-lesson.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
 import { PrismaService } from 'src/prisma.service';
 import { sendResponsive } from 'src/utils';
+import { GetAllLessonDto } from './dto/getAllLessonDto';
+import QueryDto from 'src/validators/query.dto';
 
 @Injectable()
 export class LessonService {
@@ -16,79 +22,77 @@ export class LessonService {
         title: true,
         videoUrl: true,
         teacherId: true,
-      },
-    });
-
-    if (!lesson) throw new NotFoundException('Lesson not found');
-
-    let isBooked = false;
-    const booking = await this.prisma.bookedLesson.findFirst({
-      where: {
-        lessonId,
-        studentId: currentUserId,
-      },
-      select: { id: true },
-    });
-
-    isBooked = !!booking;
-
-    return sendResponsive(
-      {
-        ...lesson,
-        isBooked,
-        videoUrl:
-          lesson.teacherId === currentUserId || isBooked
-            ? lesson.videoUrl
-            : null,
-      },
-      'Get Lesson successfully',
-    );
-  }
-
-  async getAllLessons(page = 1, currentUserId: string, courseId: string) {
-    const limit = 6;
-    const skip = (page - 1) * limit;
-
-    const lessons = await this.prisma.lesson.findMany({
-      where: { courseId },
-      skip,
-      take: limit,
-      include: {
-        _count: {
-          select: {
-            bookingLesson: {
-              where: {
-                studentId: currentUserId,
-              },
-            },
+        bookingLesson: {
+          where: {
+            studentId: currentUserId,
           },
+          select: { id: true },
+          take: 1,
         },
       },
     });
 
-    const lessonCounts = await this.prisma.course.findUnique({
-      where: { id: courseId },
-      select: { id: true, lessonCounts: true },
-    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    const isBooked =
+      lesson.teacherId === currentUserId || lesson.bookingLesson.length > 0;
+    const { bookingLesson, ...reset } = lesson;
 
-    const data = lessons.map((lesson) => {
-      const isBooked = (lesson as any)._count?.bookingLesson > 0;
+    if (!isBooked) throw new ForbiddenException('you are Not Booked in Lesson');
+    return sendResponsive(reset, 'Get Lesson successfully');
+  }
 
-      return {
-        id: lesson.id,
-        title: lesson.title,
-        description: lesson.description,
-        videoUrl:
-          lesson.teacherId === currentUserId || isBooked
-            ? lesson.videoUrl
-            : null,
-        createdAt: lesson.createdAt,
-        isBooked,
-      };
+  async getAllLessons(
+    queryDto: QueryDto,
+    currentUserId: string,
+    getAllLessonsDto: GetAllLessonDto,
+  ) {
+    const { page = 1, id: courseId } = queryDto;
+    const limit = 6;
+    const skip = (page - 1) * limit;
+
+    const where: { courseId: string; title?: string } = getAllLessonsDto.title
+      ? { courseId, title: getAllLessonsDto.title }
+      : { courseId };
+
+    const lessons = await this.prisma.lesson.findMany({
+      where,
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        teacherId: true,
+        createdAt: true,
+        bookingLesson: {
+          where: {
+            studentId: currentUserId,
+          },
+          select: { id: true },
+          take: 1,
+        },
+      },
     });
 
     return sendResponsive(
-      { lessonCounts: lessonCounts?.lessonCounts, data },
+      {
+        meta: {
+          total: lessons.length,
+          page,
+        },
+        courseId,
+        data: lessons.map((lesson) => {
+          const isBooked = lesson.bookingLesson.length > 0;
+
+          return {
+            id: lesson.id,
+            title: lesson.title,
+            description: lesson.description,
+            createdAt: lesson.createdAt,
+            isBooked: lesson.teacherId === currentUserId || isBooked,
+          };
+        }),
+      },
       'Get All Lesson successfully',
     );
   }
@@ -99,39 +103,32 @@ export class LessonService {
     createLessonDto: CreateLessonDto,
   ) {
     return this.prisma.$transaction(async (prisma) => {
-      const course = await prisma.course.findFirst({
-        where: {
-          id: courseId,
-          teacherId,
-        },
+      const course = await prisma.course.findUnique({
+        where: { id_teacherId: { id: courseId, teacherId } },
         select: { id: true },
       });
 
-      if (!course)
+      if (!course?.id)
         throw new NotFoundException('Course not found or not authorized');
 
-      const lesson = await prisma.lesson.create({
-        data: {
-          ...createLessonDto,
-          courseId,
-          teacherId,
-        },
-      });
-
-      if (!lesson)
-        throw new NotFoundException('Course not found or not authorized');
-
-      await prisma.course.updateMany({
-        where: {
-          id: courseId,
-          teacherId,
-        },
-        data: {
-          lessonCounts: {
-            increment: 1,
+      const [lesson] = await Promise.all([
+        prisma.lesson.create({
+          data: {
+            ...createLessonDto,
+            courseId,
+            teacherId,
           },
-        },
-      });
+        }),
+
+        prisma.course.update({
+          where: { id_teacherId: { id: courseId, teacherId } },
+          data: {
+            lessonCounts: {
+              increment: 1,
+            },
+          },
+        }),
+      ]);
 
       return sendResponsive(lesson, 'Lesson created successfully');
     });
@@ -142,49 +139,41 @@ export class LessonService {
     lessonId: string,
     updateLessonDto: UpdateLessonDto,
   ) {
-    const result = await this.prisma.lesson.updateMany({
+    await this.prisma.lesson.update({
       where: {
-        id: lessonId,
-        teacherId,
+        id_teacherId: {
+          id: lessonId,
+          teacherId,
+        },
       },
       data: updateLessonDto,
     });
-
-    if (result.count === 0) {
-      throw new NotFoundException('Lesson not found or, not authorized');
-    }
 
     return sendResponsive(null, 'Lesson updated successfully');
   }
 
   async deleteLesson(teacherId: string, lessonId: string, courseId: string) {
     return this.prisma.$transaction(async (prisma) => {
-      const lesson = await prisma.lesson.deleteMany({
-        where: {
-          id: lessonId,
-          teacherId,
-          courseId,
-        },
-      });
-
-      if (lesson.count === 0) {
-        throw new NotFoundException('Lesson not found or not authorized');
-      }
-
-      await prisma.course.updateMany({
-        where: {
-          id: courseId,
-          teacherId,
-          lessonCounts: {
-            gt: 0,
+      await Promise.all([
+        prisma.lesson.delete({
+          where: {
+            id_teacherId: {
+              id: lessonId,
+              teacherId,
+            },
           },
-        },
-        data: {
-          lessonCounts: {
-            decrement: 1,
+        }),
+        prisma.course.update({
+          where: {
+            id: courseId,
           },
-        },
-      });
+          data: {
+            lessonCounts: {
+              decrement: 1,
+            },
+          },
+        }),
+      ]);
 
       return sendResponsive(null, 'Lesson deleted successfully');
     });

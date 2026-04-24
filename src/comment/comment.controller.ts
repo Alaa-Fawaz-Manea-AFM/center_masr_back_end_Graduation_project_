@@ -36,15 +36,17 @@ export class CommentController {
     );
   }
 
-  @Patch(':id')
+  @Patch(':commentId')
   updateComment(
-    @Param('id', ParseUUIDPipe) commentId: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Query('postId', ParseUUIDPipe) postId: string,
     @Body() updateCommentDto: UpdateCommentDto,
     @Req() req,
   ) {
     return this.commentService.updateComment(
       req.user.userId,
       commentId,
+      postId,
       updateCommentDto.content,
     );
   }

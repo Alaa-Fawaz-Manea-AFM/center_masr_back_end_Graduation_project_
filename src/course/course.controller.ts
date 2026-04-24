@@ -16,10 +16,27 @@ import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import RolesDecorator from 'src/decorator/roles.decorator';
 import { TEACHER } from 'src/utils';
+import GetAllCourseDto from './dto/getAllCourseDto';
+import QueryPageDto from 'src/validators/queryPageDto';
+import QueryDto from 'src/validators/query.dto';
 
 @Controller('courses')
 export class CourseController {
   constructor(private readonly courseService: CourseService) {}
+
+  @Get()
+  findAll(
+    @Query() queryDto: QueryDto,
+    @Body() getAllCourseDto: GetAllCourseDto,
+  ) {
+    const { page, id: teacherId } = queryDto;
+    return this.courseService.findAll(page, teacherId, getAllCourseDto);
+  }
+
+  @Get(':courseId')
+  findOne(@Param('courseId', ParseUUIDPipe) courseId: string) {
+    return this.courseService.findOne(courseId);
+  }
 
   @RolesDecorator(TEACHER)
   @Post()
@@ -27,23 +44,10 @@ export class CourseController {
     return this.courseService.create(req.user.profileId, createCourseDto);
   }
 
-  @Get()
-  findAll(
-    @Query('page', ParseIntPipe) page: number,
-    @Query('teacherId', ParseUUIDPipe) teacherId,
-  ) {
-    return this.courseService.findAll(page, teacherId);
-  }
-
-  @Get(':id')
-  findOne(@Param('lessonId', ParseUUIDPipe) lessonId: string) {
-    return this.courseService.findOne(lessonId);
-  }
-
   @RolesDecorator(TEACHER)
-  @Patch(':id')
+  @Patch(':lessonId')
   update(
-    @Param('id', ParseUUIDPipe) lessonId: string,
+    @Param('lessonId', ParseUUIDPipe) lessonId: string,
     @Body() updateCourseDto: UpdateCourseDto,
     @Req() req,
   ) {
@@ -55,8 +59,8 @@ export class CourseController {
   }
 
   @RolesDecorator(TEACHER)
-  @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) courseId: string, @Req() req) {
+  @Delete(':courseId')
+  remove(@Param('courseId', ParseUUIDPipe) courseId: string, @Req() req) {
     return this.courseService.remove(courseId, req.user.profileId);
   }
 }

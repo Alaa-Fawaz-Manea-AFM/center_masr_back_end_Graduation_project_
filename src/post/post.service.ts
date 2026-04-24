@@ -3,18 +3,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreatePostDto } from './dto/create-post.dto';
-import { UpdatePostDto } from './dto/update-post.dto';
+import { CreatePostDto } from './dto/createPost.dto';
+import { UpdatePostDto } from './dto/updatePost.dto';
 import { PrismaService } from 'src/prisma.service';
-import { RoleEnumDto } from 'src/validators/rolesDto';
-import GetAllPostsDto from './dto/get-All-posts.dto';
+import { RoleEnumDto } from 'src/validators/roles.dto';
+import GetAllPostsDto from './dto/getAllPosts.dto';
 import { roleTeacherAndCenterSet, sendResponsive } from 'src/utils';
 
 @Injectable()
 export class PostService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getPost(postId: string, currentUserId?: string) {
+  async getPost(postId: string, userId: string) {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       select: {
@@ -22,8 +22,16 @@ export class PostService {
         title: true,
         content: true,
         imageUrl: true,
+        likeCounts: true,
+        commentCounts: true,
         createdAt: true,
-
+        likes: {
+          where: { userId },
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
         user: {
           select: {
             id: true,
@@ -34,51 +42,18 @@ export class PostService {
       },
     });
 
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
-
-    let isLiked = false;
-    let isFollowed = false;
-
-    if (currentUserId) {
-      const [like, follow] = await Promise.all([
-        this.prisma.like.findUnique({
-          where: {
-            userId_postId: {
-              userId: currentUserId,
-              postId,
-            },
-          },
-          select: { id: true },
-        }),
-
-        this.prisma.follower.findUnique({
-          where: {
-            followingId_followerId: {
-              followerId: currentUserId,
-              followingId: post.user.id,
-            },
-          },
-          select: { id: true },
-        }),
-      ]);
-
-      isLiked = !!like;
-      isFollowed = !!follow;
-    }
-
+    if (!post) throw new NotFoundException('Post not found');
+    const { likes, ...reset } = post;
     return sendResponsive(
       {
-        ...post,
-        isLiked,
-        isFollowed,
+        ...reset,
+        isLiked: post.likes.length > 0,
       },
       'Post retrieved successfully',
     );
   }
 
-  async getAllPosts(filters: GetAllPostsDto, userId?: string, page = 1) {
+  async getAllPosts(filters: GetAllPostsDto, userId: string, page = 1) {
     const limit = 6;
 
     const posts = await this.prisma.post.findMany({
@@ -95,6 +70,13 @@ export class PostService {
         likeCounts: true,
         commentCounts: true,
         createdAt: true,
+        likes: {
+          where: { userId },
+          select: {
+            id: true,
+          },
+          take: 1,
+        },
         user: {
           select: {
             id: true,
@@ -105,43 +87,31 @@ export class PostService {
       },
     });
 
-    const postIds = posts.map((p) => p.id);
-
-    let likedSet = new Set<string>();
-
-    if (userId) {
-      const likes = await this.prisma.like.findMany({
-        where: {
-          userId,
-          postId: { in: postIds },
-        },
-        select: {
-          postId: true,
-        },
-      });
-
-      likedSet = new Set(likes.map((l) => l.postId));
-    }
-
+    if (posts.length === 0) throw new NotFoundException('Posts not found');
     return sendResponsive(
       {
-        posts: posts.map((post) => ({
-          ...post,
-          isLiked: likedSet.has(post.id),
-        })),
+        meta: {
+          total: posts.length,
+          page,
+        },
+        data: posts.map((post) => {
+          const { likes, ...reset } = post;
+          return {
+            ...reset,
+            isLiked: post.likes.length > 0,
+          };
+        }),
       },
       'Posts retrieved successfully',
     );
   }
-
   async createPost(
     dataPostsDto: CreatePostDto,
     userId: string,
     role: RoleEnumDto,
   ) {
-    if (!roleTeacherAndCenterSet.has(role)) {
+    if (!roleTeacherAndCenterSet.has(role))
       throw new ForbiddenException('Only teacher or center can create posts');
-    }
 
     return this.prisma.$transaction(async (prisma) => {
       const [newPost] = await Promise.all([
@@ -165,40 +135,34 @@ export class PostService {
     });
   }
   async updatePost(postId: string, userId: string, data: UpdatePostDto) {
-    const result = await this.prisma.post.updateMany({
+    const result = await this.prisma.post.update({
       where: {
-        id: postId,
-        userId,
+        id_userId: {
+          id: postId,
+          userId,
+        },
       },
       data,
     });
 
-    if (result.count === 0) {
-      throw new NotFoundException('Post not found or not authorized');
-    }
-
     return sendResponsive(null, 'Post updated successfully');
   }
+
   async deletePost(postId: string, userId: string) {
     return this.prisma.$transaction(async (prisma) => {
-      const post = await prisma.post.deleteMany({
-        where: { id: postId, userId },
-      });
-
-      if (post.count === 0) {
-        throw new NotFoundException('Post not found or not authorized');
-      }
-
-      await prisma.user.update({
-        where: {
-          id: userId,
-        },
-        data: {
-          postCounts: {
-            decrement: 1,
+      await Promise.all([
+        prisma.post.delete({
+          where: { id_userId: { id: postId, userId } },
+        }),
+        prisma.user.update({
+          where: { id: userId },
+          data: {
+            postCounts: {
+              decrement: 1,
+            },
           },
-        },
-      });
+        }),
+      ]);
 
       return sendResponsive(null, 'Post deleted successfully');
     });

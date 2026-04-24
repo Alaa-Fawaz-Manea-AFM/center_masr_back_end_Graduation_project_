@@ -1,14 +1,6 @@
-import { IsUUID, IsString, IsOptional } from 'class-validator';
+import { PickType, PartialType } from '@nestjs/mapped-types';
+import { CreateLessonDto } from './create-lesson.dto';
 
-export class GetAllLessonDto {
-  @IsUUID()
-  teacherId!: string;
-
-  @IsOptional()
-  @IsString()
-  classRoom!: string;
-
-  @IsOptional()
-  @IsString()
-  studyMaterial!: string;
-}
+export class GetAllLessonDto extends PartialType(
+  PickType(CreateLessonDto, ['title']),
+) {}

@@ -13,11 +13,10 @@ export class OwnershipGuard implements CanActivate {
     const userId = request?.user?.userId;
     const resourceUserId = request.params.id || request.body.userId;
 
-    if (resourceUserId !== userId) {
+    if (resourceUserId !== userId)
       throw new ForbiddenException(
         'You are not allowed to perform this action',
       );
-    }
 
     return true;
   }

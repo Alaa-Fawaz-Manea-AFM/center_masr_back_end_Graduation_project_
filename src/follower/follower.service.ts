@@ -16,13 +16,10 @@ export class FollowerService {
         select: { id: true, role: true },
       });
 
-      if (!targetUser) {
-        throw new NotFoundException('User not found');
-      }
+      if (!targetUser) throw new NotFoundException('User not found');
 
-      if (!roleTeacherAndCenterSet.has(targetUser.role)) {
+      if (!roleTeacherAndCenterSet.has(targetUser.role))
         throw new BadRequestException('Invalid role (teacher or center only)');
-      }
 
       const existingFollow = await prisma.follower.findUnique({
         where: {

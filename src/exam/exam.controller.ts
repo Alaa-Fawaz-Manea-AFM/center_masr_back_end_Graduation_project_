@@ -12,12 +12,33 @@ import {
 } from '@nestjs/common';
 import { ExamService } from './exam.service';
 import { CreateExamDto } from './dto/create-exam.dto';
-import AuthDecorator from 'src/decorator/auth.decorator';
+import { GetAllLessonDto } from 'src/lesson/dto/getAllLessonDto';
+import RolesDecorator from 'src/decorator/roles.decorator';
+import { TEACHER } from 'src/utils';
 
 @Controller('exams')
 export class ExamController {
   constructor(private readonly examService: ExamService) {}
 
+  @Get()
+  findAll(
+    @Query('courseId', ParseUUIDPipe) courseId: string,
+    @Req() req,
+    @Query() getAllExamDto: GetAllLessonDto,
+  ) {
+    return this.examService.findAll(
+      courseId,
+      req.user.profileId,
+      getAllExamDto,
+    );
+  }
+
+  @Get(':examId')
+  findOne(@Param('examId', ParseUUIDPipe) examId: string, @Req() req) {
+    return this.examService.findOne(req.user.profileId, examId);
+  }
+
+  @RolesDecorator(TEACHER)
   @Post(':lessonId')
   create(
     @Param('lessonId', ParseUUIDPipe) lessonId: string,
@@ -33,16 +54,7 @@ export class ExamController {
     );
   }
 
-  @Get()
-  findAll(@Query('courseId', ParseUUIDPipe) courseId: string, @Req() req) {
-    return this.examService.findAll(courseId, req.user.profileId);
-  }
-
-  @Get(':examId')
-  findOne(@Param('examId', ParseUUIDPipe) examId: string, @Req() req) {
-    return this.examService.findOne(req.user.profileId, examId);
-  }
-
+  @RolesDecorator(TEACHER)
   @Patch(':examId')
   update(
     @Param('examId', ParseUUIDPipe) examId: string,
@@ -52,6 +64,7 @@ export class ExamController {
     return this.examService.update(examId, req.user.profileId, updateExamDto);
   }
 
+  @RolesDecorator(TEACHER)
   @Delete(':examId')
   remove(
     @Param('examId', ParseUUIDPipe) examId: string,

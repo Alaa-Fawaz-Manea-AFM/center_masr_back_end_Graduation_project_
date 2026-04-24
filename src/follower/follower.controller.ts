@@ -5,8 +5,11 @@ import { FollowerService } from './follower.service';
 export class FollowerController {
   constructor(private readonly followerService: FollowerService) {}
 
-  @Post(':id')
-  toggleFollowUser(@Param('id', ParseUUIDPipe) userId: string, @Req() req) {
-    return this.followerService.toggleFollowUser(req.user.userId, userId);
+  @Post(':targetUserId')
+  toggleFollowUser(
+    @Param('targetUserId', ParseUUIDPipe) targetUserId: string,
+    @Req() req,
+  ) {
+    return this.followerService.toggleFollowUser(req.user.userId, targetUserId);
   }
 }

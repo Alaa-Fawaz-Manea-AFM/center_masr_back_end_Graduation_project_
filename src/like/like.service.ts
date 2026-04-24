@@ -37,10 +37,7 @@ export class LikeService {
           },
         });
 
-        return {
-          message: 'Post unliked successfully',
-          liked: false,
-        };
+        return sendResponsive(null, 'Post unliked successfully');
       }
 
       like = await prisma.like.create({

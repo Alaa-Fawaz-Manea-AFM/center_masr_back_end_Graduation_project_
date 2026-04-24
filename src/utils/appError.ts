@@ -1,4 +1,15 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
+import {
+  BadRequest,
+  ErrorException,
+  Forbidden,
+  NotFound,
+  Unauthorized,
+} from './constant';
 
 export class AppException extends HttpException {
   public isOperational: boolean;

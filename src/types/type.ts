@@ -1,4 +1,4 @@
-import { RoleEnumDto } from 'src/validators/rolesDto';
+import { RoleEnumDto } from 'src/validators/roles.dto';
 
 type PayloadTokenType = {
   userId: string;
@@ -13,10 +13,10 @@ type RequestType = {
 };
 
 type UserDataType = {
-  name?: string;
+  name: string;
   imageUrl: string | undefined;
-  phone?: string;
-  address?: string;
+  phone: string;
+  address: string;
 };
 
 type ProfileDataType = {

@@ -1,11 +1,8 @@
-import IfAppError from './appError';
+import { BadRequestException } from '@nestjs/common';
 
 const checkOwnership = (userId: string, currentUserId: string) => {
-  IfAppError(
-    userId !== currentUserId,
-    'You are not allowed to perform this action',
-    403,
-  );
+  if (userId !== currentUserId)
+    throw new BadRequestException('You are not allowed to perform this action');
 };
 
 export default checkOwnership;

@@ -36,9 +36,8 @@ export class BookedWeeklyService {
           };
         }
 
-        if (error.code === 'P2003') {
+        if (error.code === 'P2003')
           throw new NotFoundException('Teacher day not found');
-        }
 
         throw error;
       }
