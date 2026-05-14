@@ -1,0 +1,473 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  teacher
+  student
+  center
+}
+
+model User {
+  id       String  @id @default(uuid())
+  name     String
+  imageUrl String?
+  email    String  @unique
+  password String
+  role     Role
+  phone    String?
+
+  followerCounts  Int @default(0)
+  followingCounts Int @default(0)
+  postCounts      Int @default(0)
+
+  teacher Teacher?
+  student Student?
+  center  Center?
+
+  refresh_token RefreshToken?
+
+  posts    Post[]
+  comments Comment[]
+
+  conversationsA Conversation[] @relation("userA")
+  conversationsB Conversation[] @relation("userB")
+
+  sentMessages     Message[] @relation("sender")
+  receivedMessages Message[] @relation("receiver")
+
+  notifications Notifications[]
+
+  likes     Like[]
+  followers Follower[] @relation("followers")
+  following Follower[] @relation("following")
+
+  review    Review[] @relation("reviews")
+  reviewing Review[] @relation("reviewing")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Conversation {
+  id String @id @default(cuid())
+
+  userAId String
+  userBId String
+
+  userA User @relation("userA", fields: [userAId], references: [id])
+  userB User @relation("userB", fields: [userBId], references: [id])
+
+  lastMessage   String   @default("")
+  lastMessageAt DateTime @default(now())
+
+  messages Message[]
+
+  createdAt DateTime?
+
+  @@unique([userAId, userBId])
+}
+
+model Message {
+  id      String @id @default(cuid())
+  content String
+
+  senderId       String
+  receiverId     String
+  conversationId String
+
+  sender       User         @relation("sender", fields: [senderId], references: [id])
+  receiver     User         @relation("receiver", fields: [receiverId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+model Notifications {
+  id      String  @id @default(cuid())
+  userId  String
+  message String
+  isRead  Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model Teacher {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  classRoom                String[]
+  studyMaterial            String?
+  studySystem              String[] @default(["عربي"])
+  educationalStage         String?
+  star                     Float    @default(0)
+  whatsPhone               String?
+  sharePrice               Int      @default(0)
+  educationalQualification String?
+
+  bio            String?
+  studentCounts  Int     @default(0)
+  experienceYear Int     @default(0)
+  courseCounts   Int     @default(0)
+  lessonCounts   Int     @default(0)
+  noteCounts     Int     @default(0)
+  homeworkCounts Int     @default(0)
+  examCounts     Int     @default(0)
+
+  course   Course[]
+  lesson   Lesson[]
+  note     Note[]
+  exam     Exam[]
+  homework Homework[]
+
+  @@index([classRoom, studyMaterial, studySystem])
+}
+
+model Student {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  educationalStage String?
+  classRoom        String?
+
+  bookingWeekly BookedWeekly[]
+  bookingLesson BookedLesson[]
+
+  @@index([classRoom, educationalStage])
+}
+
+model Center {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  bio              String?
+  location         String?
+  governorate      String?
+  address          String?
+  educationalStage String[]
+  studySystem      String[] @default(["عربي"])
+  // classRoom        String[]
+  star             Float    @default(0)
+  studentCounts    Int      @default(0)
+  whatsPhone       String?
+  contactUsPhone   String[]
+  contactUsEmail   String?
+  studyMaterials   String[]
+
+  teacherByCenter TeacherByCenter[]
+  bookingWeekly   BookedWeekly[]
+  schedules       WeeklySchedule[]
+  teacherDay      TeacherDay[]
+}
+
+model TeacherByCenter {
+  id String @id @default(uuid())
+
+  centerId String
+  center   Center  @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  name     String
+  imageUrl String?
+  phone    String?
+
+  classRoom                String[]
+  studyMaterial            String?
+  studySystem              String[] @default(["عربي"])
+  educationalStage         String?
+  star                     Float    @default(0)
+  whatsPhone               String?
+  sharePrice               Int      @default(0)
+  educationalQualification String?
+
+  bio            String?
+  studentCounts  Int     @default(0)
+  experienceYear Int     @default(0)
+  courseCounts   Int     @default(0)
+  lessonCounts   Int     @default(0)
+  noteCounts     Int     @default(0)
+  homeworkCounts Int     @default(0)
+  examCounts     Int     @default(0)
+
+  teacherDays TeacherDay[]
+}
+
+model RefreshToken {
+  id String @id @default(uuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token String
+}
+
+model Review {
+  id String @id @default(uuid())
+
+  rate          Int    @default(0)
+  ownerReviewId String
+  userReviewId  String
+
+  review    User @relation("reviews", fields: [ownerReviewId], references: [id], onDelete: Cascade)
+  reviewing User @relation("reviewing", fields: [userReviewId], references: [id], onDelete: Cascade)
+
+  @@index([ownerReviewId])
+  @@index([userReviewId])
+}
+
+model Course {
+  id        String  @id @default(uuid())
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  time           DateTime
+  day            String
+  title          String
+  studyMaterial  String
+  classRoom      String
+  studentCounts  Int      @default(0)
+  lessonCounts   Int      @default(0)
+  noteCounts     Int      @default(0)
+  examCounts     Int      @default(0)
+  homeworkCounts Int      @default(0)
+
+  lesson   Lesson[]
+  exam     Exam[]
+  note     Note[]
+  homework Homework[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, teacherId])
+  @@unique([studyMaterial, classRoom, teacherId])
+  @@index([teacherId, classRoom])
+}
+
+model Lesson {
+  id String @id @default(uuid())
+
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  title    String
+  duration String
+  // description String
+  videoUrl String?
+
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId String
+
+  exam          Exam[]
+  homework      Homework[]
+  note          Note[]
+  bookingLesson BookedLesson[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, teacherId])
+  @@index([courseId, title])
+}
+
+model BookedLesson {
+  id String @id @default(uuid())
+
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+
+  lesson   Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lessonId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, lessonId])
+  @@index([lessonId, studentId])
+}
+
+model Note {
+  id String @id @default(uuid())
+
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  fileUrl String
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, teacherId])
+  @@unique([teacherId, lessonId, courseId])
+  @@index([courseId])
+}
+
+model Homework {
+  id String @id @default(uuid())
+
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  fileUrl String
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, teacherId])
+  @@unique([teacherId, lessonId, courseId])
+  @@index([courseId])
+}
+
+model Exam {
+  id String @id @default(uuid())
+
+  timeEnd  DateTime
+  duration DateTime
+  fileUrl  String
+
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  lessonId String
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, teacherId])
+  @@unique([teacherId, lessonId, courseId])
+  @@index([courseId])
+}
+
+model WeeklySchedule {
+  id String @id @default(uuid())
+
+  centerId String
+  center   Center @relation(fields: [centerId], references: [id], onDelete: Cascade)
+
+  classRoom   String
+  teacherDays TeacherDay[]
+
+  @@unique([id, centerId])
+  @@unique([centerId, classRoom])
+}
+
+model TeacherDay {
+  id                String          @id @default(uuid())
+  teacherByCenterId String
+  teacherByCenter   TeacherByCenter @relation(fields: [teacherByCenterId], references: [id], onDelete: Cascade)
+
+  weeklyScheduleId String
+  weeklySchedule   WeeklySchedule @relation(fields: [weeklyScheduleId], references: [id], onDelete: Cascade)
+
+  time String
+  day  String
+  // studyMaterial String
+
+  bookedWeekly BookedWeekly[]
+  center       Center?        @relation(fields: [centerId], references: [id])
+  centerId     String?
+
+  @@unique([teacherByCenterId, weeklyScheduleId, day, time])
+}
+
+model BookedWeekly {
+  id           String @id @default(uuid())
+  studentId    String
+  centerId     String
+  teacherDayId String
+
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  center     Center     @relation(fields: [centerId], references: [id], onDelete: Cascade)
+  teacherDay TeacherDay @relation(fields: [teacherDayId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, teacherDayId])
+  @@index([studentId, teacherDayId])
+}
+
+model Post {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role     Role
+  title    String
+  imageUrl String?
+
+  likeCounts    Int @default(0)
+  commentCounts Int @default(0)
+
+  comments Comment[]
+  likes    Like[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, userId])
+  @@index([userId, role])
+}
+
+model Like {
+  id     String @id @default(uuid())
+  userId String
+  postId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+}
+
+model Comment {
+  id     String @id @default(uuid())
+  userId String
+  postId String
+
+  content String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([id, userId, postId])
+  @@index([userId, postId])
+}
+
+model Follower {
+  id          String @id @default(uuid())
+  followingId String
+  followerId  String
+
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  follower  User @relation("followers", fields: [followerId], references: [id], onDelete: Cascade)
+
+  @@unique([followingId, followerId])
+  @@index([followingId, followerId])
+}

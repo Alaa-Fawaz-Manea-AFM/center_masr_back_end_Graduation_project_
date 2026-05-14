@@ -1,0 +1,67 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Req,
+  ParseUUIDPipe,
+  Query,
+} from '@nestjs/common';
+import { ExamService } from './exam.service';
+import { CreateExamDto } from './dto/create-exam.dto';
+import { GetAllLessonDto } from 'src/lesson/dto/getAllLessonDto';
+import RolesDecorator from 'src/decorator/roles.decorator';
+import { TEACHER } from 'src/utils';
+import QueryDto from 'src/validators/query.dto';
+
+@Controller('exams')
+export class ExamController {
+  constructor(private readonly examService: ExamService) {}
+
+  @Get()
+  findAll(
+    @Query() queryDto: QueryDto,
+    @Query() getAllExamDto: GetAllLessonDto,
+    @Req() req,
+  ) {
+    return this.examService.findAll(
+      queryDto.id,
+      req.user.profileId,
+      getAllExamDto,
+    );
+  }
+
+  @Get(':examId')
+  findOne(@Param('examId', ParseUUIDPipe) examId: string, @Req() req) {
+    return this.examService.findOne(req.user.profileId, examId);
+  }
+
+  @RolesDecorator(TEACHER)
+  @Post(':lessonId')
+  create(
+    @Param('lessonId', ParseUUIDPipe) lessonId: string,
+    @Body() createExamDto: CreateExamDto,
+    @Req() req,
+  ) {
+    return this.examService.create(req.user.profileId, lessonId, createExamDto);
+  }
+
+  @RolesDecorator(TEACHER)
+  @Patch(':examId')
+  update(
+    @Param('examId', ParseUUIDPipe) examId: string,
+    @Body() updateExamDto: CreateExamDto,
+    @Req() req,
+  ) {
+    return this.examService.update(examId, req.user.profileId, updateExamDto);
+  }
+
+  @RolesDecorator(TEACHER)
+  @Delete(':examId')
+  remove(@Param('examId', ParseUUIDPipe) examId: string, @Req() req) {
+    return this.examService.remove(req.user.profileId, examId);
+  }
+}
